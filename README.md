@@ -330,11 +330,11 @@ traceguard-ai/
 └── README.md
 ```
 
-### `01-data-generation.ipynb`
+### `01-data-generation.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/01-data-generation.ipynb
 
 Generates the synthetic automotive engineering dataset used by TraceGuard.
 
-### `02-basic-rag.ipynb`
+### `02-basic-rag.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/02-basic-rag.ipynb
 
 Contains the detailed implementation of the Hybrid RAG and traceability-aware impact analysis pipeline.
 
@@ -346,11 +346,11 @@ The notebook is intentionally retained so that the complete pipeline can be exec
 - Retrieval inspection
 - Future evaluation work
 
-### `src/traceguard.py`
+### `src/traceguard.py` - https://github.com/Sivashankari99/traceguard-ai/blob/main/src/traceguard.py
 
 Contains the reusable TraceGuard implementation with the core retrieval, traceability, LLM assessment, and validation functionality.
 
-### `02-traceguard-simple-runner.ipynb`
+### `02-traceguard-simple-runner.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/02-traceguard-simple-runner.ipynb
 
 Provides a simplified interface for running TraceGuard.
 
