@@ -1,1 +1,1 @@
-from .traceguard import Traceguard
+from .traceguard_v2 import TraceGuard
