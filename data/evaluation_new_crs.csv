@@ -1,101 +1,101 @@
 Evaluation_CR_ID,Summary,Domain,Topic,Target_Release_ID,Release_Mapping_Available
-EVAL-CR-001,"Refine vibration monitoring monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,vibration monitoring,REL-00038,True
-EVAL-CR-002,"Update adas behavior for object detection to strengthen fault detection, fallback, and recovery.",ADAS,object detection,,False
-EVAL-CR-003,"Refine fallback monitoring for transient faults, plausibility handling, and safe recovery.",Steering,fallback,REL-00030,True
-EVAL-CR-004,Improve degraded steering fallback behavior to handle invalid or implausible conditions and improve diagnostic recovery.,Steering,fallback,,False
-EVAL-CR-005,"Refine deceleration monitoring for transient faults, plausibility handling, and safe recovery.",Braking,deceleration,,False
-EVAL-CR-006,Enhance CAN bus signal timeout handling for boundary conditions and diagnostic robustness.,Vehicle Network,CAN bus signal,,False
-EVAL-CR-007,"Refine battery temperature monitoring for transient faults, plausibility handling, and safe recovery.",Battery,battery temperature,REL-00024,True
-EVAL-CR-008,"Refine steering angle monitoring for transient faults, plausibility handling, and safe recovery.",Steering,steering angle,REL-00028,True
-EVAL-CR-009,Enhance battery thermal protection for boundary conditions and diagnostic robustness.,Battery,battery temperature,REL-00033,True
-EVAL-CR-010,Enhance wheel-slip detection on low-friction surfaces for boundary conditions and diagnostic robustness.,Braking,wheel slip,REL-00034,True
-EVAL-CR-011,Improve scheduled charging session management to handle invalid or implausible conditions and improve diagnostic recovery.,Charging,charge scheduling,REL-00002,True
-EVAL-CR-012,"Refine charge port monitoring for transient faults, plausibility handling, and safe recovery.",Charging,charge port,REL-00007,True
-EVAL-CR-013,"Refine damper control monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,damper control,REL-00007,True
-EVAL-CR-014,"Refine vibration monitoring monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,vibration monitoring,REL-00019,True
-EVAL-CR-015,Improve steering-angle sensing and plausibility to handle invalid or implausible conditions and improve diagnostic recovery.,Steering,steering angle,REL-00022,True
-EVAL-CR-016,Enhance torque limitation during faults for boundary conditions and diagnostic robustness.,Powertrain,torque limitation,,False
-EVAL-CR-017,"Update hvac behavior for air quality to strengthen fault detection, fallback, and recovery.",HVAC,air quality,,False
-EVAL-CR-018,"Update steering behavior for steering angle to strengthen fault detection, fallback, and recovery.",Steering,steering angle,REL-00040,True
-EVAL-CR-019,Enhance state-of-charge estimation for boundary conditions and diagnostic robustness.,Battery,state of charge,REL-00021,True
-EVAL-CR-020,"Refine speed control monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,speed control,REL-00045,True
-EVAL-CR-021,Enhance steering-angle sensing and plausibility for boundary conditions and diagnostic robustness.,Steering,steering angle,,False
-EVAL-CR-022,Enhance heat-exchanger efficiency monitoring for boundary conditions and diagnostic robustness.,Thermal,heat exchanger,REL-00048,True
-EVAL-CR-023,"Refine distance estimation monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,distance estimation,REL-00048,True
-EVAL-CR-024,Improve driver warning and escalation logic to handle invalid or implausible conditions and improve diagnostic recovery.,ADAS,warning logic,REL-00026,True
-EVAL-CR-025,Enhance battery thermal protection for boundary conditions and diagnostic robustness.,Battery,battery temperature,REL-00032,True
-EVAL-CR-026,"Update braking behavior for wheel speed to strengthen fault detection, fallback, and recovery.",Braking,wheel speed,REL-00006,True
-EVAL-CR-027,Improve traction motor torque control to handle invalid or implausible conditions and improve diagnostic recovery.,Powertrain,motor torque,REL-00020,True
-EVAL-CR-028,"Update suspension behavior for load estimation to strengthen fault detection, fallback, and recovery.",Suspension,load estimation,REL-00013,True
-EVAL-CR-029,Improve axle load estimation to handle invalid or implausible conditions and improve diagnostic recovery.,Suspension,load estimation,REL-00015,True
-EVAL-CR-030,Improve chassis vibration monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,Suspension,vibration monitoring,,False
-EVAL-CR-031,Improve heat-exchanger efficiency monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,Thermal,heat exchanger,REL-00017,True
-EVAL-CR-032,Enhance driver torque sensing for boundary conditions and diagnostic robustness.,Steering,torque sensing,REL-00020,True
-EVAL-CR-033,"Refine load estimation monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,load estimation,REL-00017,True
-EVAL-CR-034,Improve cabin temperature regulation to handle invalid or implausible conditions and improve diagnostic recovery.,Thermal,cabin temperature,REL-00034,True
-EVAL-CR-035,"Update steering behavior for fallback to strengthen fault detection, fallback, and recovery.",Steering,fallback,REL-00045,True
-EVAL-CR-036,"Refine wheel speed monitoring for transient faults, plausibility handling, and safe recovery.",Braking,wheel speed,REL-00001,True
-EVAL-CR-037,"Refine deceleration monitoring for transient faults, plausibility handling, and safe recovery.",Braking,deceleration,REL-00001,True
-EVAL-CR-038,Enhance HVAC compressor cycling control for boundary conditions and diagnostic robustness.,HVAC,compressor control,REL-00043,True
-EVAL-CR-039,"Refine vibration monitoring monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,vibration monitoring,,False
-EVAL-CR-040,"Refine cabin airflow monitoring for transient faults, plausibility handling, and safe recovery.",HVAC,cabin airflow,REL-00004,True
-EVAL-CR-041,Enhance vehicle deceleration estimation for boundary conditions and diagnostic robustness.,Braking,deceleration,REL-00017,True
-EVAL-CR-042,"Update thermal behavior for cabin temperature to strengthen fault detection, fallback, and recovery.",Thermal,cabin temperature,REL-00039,True
-EVAL-CR-043,Improve electric steering assist control to handle invalid or implausible conditions and improve diagnostic recovery.,Steering,steering assist,REL-00001,True
-EVAL-CR-044,Improve powertrain thermal derating to handle invalid or implausible conditions and improve diagnostic recovery.,Powertrain,thermal derating,REL-00045,True
-EVAL-CR-045,Enhance ride-height sensing and leveling for boundary conditions and diagnostic robustness.,Suspension,ride height,REL-00006,True
-EVAL-CR-046,Enhance degraded steering fallback behavior for boundary conditions and diagnostic robustness.,Steering,fallback,,False
-EVAL-CR-047,"Refine warning logic monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,warning logic,,False
-EVAL-CR-048,Enhance network wakeup and sleep management for boundary conditions and diagnostic robustness.,Vehicle Network,network wakeup,REL-00001,True
-EVAL-CR-049,Enhance battery thermal protection for boundary conditions and diagnostic robustness.,Battery,battery temperature,,False
-EVAL-CR-050,Improve heat-exchanger efficiency monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,Thermal,heat exchanger,REL-00003,True
-EVAL-CR-051,Improve diagnostic session access control to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,diagnostic session,REL-00037,True
-EVAL-CR-052,Improve state-of-charge estimation to handle invalid or implausible conditions and improve diagnostic recovery.,Battery,state of charge,REL-00019,True
-EVAL-CR-053,"Refine warning logic monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,warning logic,REL-00028,True
-EVAL-CR-054,"Refine wheel speed monitoring for transient faults, plausibility handling, and safe recovery.",Braking,wheel speed,REL-00045,True
-EVAL-CR-055,"Update suspension behavior for ride height to strengthen fault detection, fallback, and recovery.",Suspension,ride height,REL-00050,True
-EVAL-CR-056,"Update braking behavior for wheel slip to strengthen fault detection, fallback, and recovery.",Braking,wheel slip,,False
-EVAL-CR-057,"Refine sensor fusion monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,sensor fusion,REL-00045,True
-EVAL-CR-058,"Update charging behavior for charge scheduling to strengthen fault detection, fallback, and recovery.",Charging,charge scheduling,REL-00043,True
-EVAL-CR-059,"Update battery behavior for state of charge to strengthen fault detection, fallback, and recovery.",Battery,state of charge,REL-00016,True
-EVAL-CR-060,"Refine torque limitation monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,torque limitation,REL-00001,True
-EVAL-CR-061,Improve inter-domain gateway message routing to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,gateway routing,REL-00039,True
-EVAL-CR-062,"Update hvac behavior for cabin airflow to strengthen fault detection, fallback, and recovery.",HVAC,cabin airflow,REL-00038,True
-EVAL-CR-063,Enhance scheduled charging session management for boundary conditions and diagnostic robustness.,Charging,charge scheduling,REL-00026,True
-EVAL-CR-064,"Refine charge scheduling monitoring for transient faults, plausibility handling, and safe recovery.",Charging,charge scheduling,REL-00046,True
-EVAL-CR-065,"Update braking behavior for wheel speed to strengthen fault detection, fallback, and recovery.",Braking,wheel speed,REL-00024,True
-EVAL-CR-066,Improve ride-height sensing and leveling to handle invalid or implausible conditions and improve diagnostic recovery.,Suspension,ride height,REL-00004,True
-EVAL-CR-067,Enhance axle load estimation for boundary conditions and diagnostic robustness.,Suspension,load estimation,REL-00028,True
-EVAL-CR-068,"Refine speed control monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,speed control,,False
-EVAL-CR-069,"Update hvac behavior for compressor control to strengthen fault detection, fallback, and recovery.",HVAC,compressor control,,False
-EVAL-CR-070,"Update steering behavior for fallback to strengthen fault detection, fallback, and recovery.",Steering,fallback,REL-00009,True
-EVAL-CR-071,Improve anti-lock braking intervention logic to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,ABS control,REL-00017,True
-EVAL-CR-072,"Refine steering assist monitoring for transient faults, plausibility handling, and safe recovery.",Steering,steering assist,REL-00041,True
-EVAL-CR-073,"Update steering behavior for torque sensing to strengthen fault detection, fallback, and recovery.",Steering,torque sensing,REL-00050,True
-EVAL-CR-074,Enhance windshield defrost activation logic for boundary conditions and diagnostic robustness.,HVAC,defrost logic,REL-00008,True
-EVAL-CR-075,"Update powertrain behavior for speed control to strengthen fault detection, fallback, and recovery.",Powertrain,speed control,REL-00002,True
-EVAL-CR-076,"Update steering behavior for torque sensing to strengthen fault detection, fallback, and recovery.",Steering,torque sensing,REL-00028,True
-EVAL-CR-077,Improve state-of-charge estimation to handle invalid or implausible conditions and improve diagnostic recovery.,Battery,state of charge,REL-00028,True
-EVAL-CR-078,"Update battery behavior for battery temperature to strengthen fault detection, fallback, and recovery.",Battery,battery temperature,REL-00037,True
-EVAL-CR-079,"Update braking behavior for ABS control to strengthen fault detection, fallback, and recovery.",Braking,ABS control,,False
-EVAL-CR-080,"Refine CAN bus signal monitoring for transient faults, plausibility handling, and safe recovery.",Vehicle Network,CAN bus signal,REL-00038,True
-EVAL-CR-081,"Refine defrost logic monitoring for transient faults, plausibility handling, and safe recovery.",HVAC,defrost logic,REL-00044,True
-EVAL-CR-082,Improve CAN bus signal timeout handling to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,CAN bus signal,REL-00015,True
-EVAL-CR-083,"Refine wheel speed monitoring for transient faults, plausibility handling, and safe recovery.",Braking,wheel speed,,False
-EVAL-CR-084,"Refine speed control monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,speed control,REL-00004,True
-EVAL-CR-085,Enhance network wakeup and sleep management for boundary conditions and diagnostic robustness.,Vehicle Network,network wakeup,REL-00046,True
-EVAL-CR-086,Enhance torque limitation during faults for boundary conditions and diagnostic robustness.,Powertrain,torque limitation,REL-00047,True
-EVAL-CR-087,"Update hvac behavior for air quality to strengthen fault detection, fallback, and recovery.",HVAC,air quality,REL-00005,True
-EVAL-CR-088,Enhance scheduled charging session management for boundary conditions and diagnostic robustness.,Charging,charge scheduling,REL-00030,True
-EVAL-CR-089,"Refine sensor fusion monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,sensor fusion,REL-00037,True
-EVAL-CR-090,Enhance DC fast-charging current control for boundary conditions and diagnostic robustness.,Charging,DC fast charging,REL-00031,True
-EVAL-CR-091,Improve charging-current limitation to handle invalid or implausible conditions and improve diagnostic recovery.,Battery,charge current,REL-00028,True
-EVAL-CR-092,Improve cabin air quality monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,HVAC,air quality,,False
-EVAL-CR-093,"Update hvac behavior for compressor control to strengthen fault detection, fallback, and recovery.",HVAC,compressor control,REL-00033,True
-EVAL-CR-094,Improve motor-speed regulation to handle invalid or implausible conditions and improve diagnostic recovery.,Powertrain,speed control,REL-00034,True
-EVAL-CR-095,"Refine charge port monitoring for transient faults, plausibility handling, and safe recovery.",Charging,charge port,REL-00046,True
-EVAL-CR-096,Improve inter-domain gateway message routing to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,gateway routing,REL-00031,True
-EVAL-CR-097,"Update hvac behavior for defrost logic to strengthen fault detection, fallback, and recovery.",HVAC,defrost logic,REL-00005,True
-EVAL-CR-098,"Refine steering angle monitoring for transient faults, plausibility handling, and safe recovery.",Steering,steering angle,REL-00047,True
-EVAL-CR-099,Improve anti-lock braking intervention logic to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,ABS control,REL-00003,True
-EVAL-CR-100,"Update suspension behavior for damper control to strengthen fault detection, fallback, and recovery.",Suspension,damper control,,False
+EVAL-CR-001,"Refine object detection monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,object detection,REL-00033,True
+EVAL-CR-002,"Update steering behavior for fallback to strengthen fault detection, fallback, and recovery.",Steering,fallback,REL-00039,True
+EVAL-CR-003,Improve vehicle deceleration estimation to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,deceleration,REL-00040,True
+EVAL-CR-004,"Update hvac behavior for defrost logic to strengthen fault detection, fallback, and recovery.",HVAC,defrost logic,REL-00024,True
+EVAL-CR-005,Enhance CAN bus signal timeout handling for boundary conditions and diagnostic robustness.,Vehicle Network,CAN bus signal,,False
+EVAL-CR-006,"Refine charge current monitoring for transient faults, plausibility handling, and safe recovery.",Battery,charge current,REL-00011,True
+EVAL-CR-007,"Refine gateway routing monitoring for transient faults, plausibility handling, and safe recovery.",Vehicle Network,gateway routing,REL-00013,True
+EVAL-CR-008,Improve anti-lock braking intervention logic to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,ABS control,REL-00022,True
+EVAL-CR-009,Improve anti-lock braking intervention logic to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,ABS control,REL-00006,True
+EVAL-CR-010,Enhance network wakeup and sleep management for boundary conditions and diagnostic robustness.,Vehicle Network,network wakeup,REL-00009,True
+EVAL-CR-011,"Update battery behavior for state of charge to strengthen fault detection, fallback, and recovery.",Battery,state of charge,REL-00026,True
+EVAL-CR-012,Enhance windshield defrost activation logic for boundary conditions and diagnostic robustness.,HVAC,defrost logic,REL-00049,True
+EVAL-CR-013,Enhance wheel-speed signal plausibility and filtering for boundary conditions and diagnostic robustness.,Braking,wheel speed,REL-00020,True
+EVAL-CR-014,"Update battery behavior for charge current to strengthen fault detection, fallback, and recovery.",Battery,charge current,REL-00003,True
+EVAL-CR-015,"Refine diagnostic session monitoring for transient faults, plausibility handling, and safe recovery.",Vehicle Network,diagnostic session,,False
+EVAL-CR-016,"Refine cell voltage monitoring for transient faults, plausibility handling, and safe recovery.",Battery,cell voltage,REL-00035,True
+EVAL-CR-017,"Refine ride height monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,ride height,REL-00025,True
+EVAL-CR-018,"Refine isolation monitoring for transient faults, plausibility handling, and safe recovery.",Battery,isolation,,False
+EVAL-CR-019,Enhance brake-pressure modulation and monitoring for boundary conditions and diagnostic robustness.,Braking,brake pressure,,False
+EVAL-CR-020,Enhance motor-speed regulation for boundary conditions and diagnostic robustness.,Powertrain,speed control,REL-00010,True
+EVAL-CR-021,"Update suspension behavior for ride height to strengthen fault detection, fallback, and recovery.",Suspension,ride height,REL-00018,True
+EVAL-CR-022,"Update powertrain behavior for thermal derating to strengthen fault detection, fallback, and recovery.",Powertrain,thermal derating,REL-00025,True
+EVAL-CR-023,Enhance driver torque sensing for boundary conditions and diagnostic robustness.,Steering,torque sensing,REL-00029,True
+EVAL-CR-024,Enhance CAN bus signal timeout handling for boundary conditions and diagnostic robustness.,Vehicle Network,CAN bus signal,REL-00025,True
+EVAL-CR-025,"Update hvac behavior for compressor control to strengthen fault detection, fallback, and recovery.",HVAC,compressor control,REL-00004,True
+EVAL-CR-026,Enhance longitudinal distance estimation for boundary conditions and diagnostic robustness.,ADAS,distance estimation,REL-00012,True
+EVAL-CR-027,Improve wheel-slip detection on low-friction surfaces to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,wheel slip,REL-00013,True
+EVAL-CR-028,Improve diagnostic session access control to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,diagnostic session,REL-00002,True
+EVAL-CR-029,"Refine charge port monitoring for transient faults, plausibility handling, and safe recovery.",Charging,charge port,REL-00001,True
+EVAL-CR-030,"Refine gateway routing monitoring for transient faults, plausibility handling, and safe recovery.",Vehicle Network,gateway routing,REL-00006,True
+EVAL-CR-031,"Refine defrost logic monitoring for transient faults, plausibility handling, and safe recovery.",HVAC,defrost logic,REL-00017,True
+EVAL-CR-032,Improve high-voltage isolation monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,Battery,isolation,REL-00008,True
+EVAL-CR-033,Improve cabin airflow distribution control to handle invalid or implausible conditions and improve diagnostic recovery.,HVAC,cabin airflow,REL-00010,True
+EVAL-CR-034,"Update steering behavior for steering angle to strengthen fault detection, fallback, and recovery.",Steering,steering angle,REL-00027,True
+EVAL-CR-035,"Update suspension behavior for ride height to strengthen fault detection, fallback, and recovery.",Suspension,ride height,,False
+EVAL-CR-036,"Refine load estimation monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,load estimation,,False
+EVAL-CR-037,Enhance adaptive damper control for boundary conditions and diagnostic robustness.,Suspension,damper control,REL-00031,True
+EVAL-CR-038,Enhance chassis vibration monitoring for boundary conditions and diagnostic robustness.,Suspension,vibration monitoring,REL-00037,True
+EVAL-CR-039,Enhance charging-current limitation for boundary conditions and diagnostic robustness.,Battery,charge current,REL-00020,True
+EVAL-CR-040,Improve coolant-flow rate monitoring and control to handle invalid or implausible conditions and improve diagnostic recovery.,Thermal,coolant flow,REL-00002,True
+EVAL-CR-041,"Update suspension behavior for load estimation to strengthen fault detection, fallback, and recovery.",Suspension,load estimation,REL-00044,True
+EVAL-CR-042,"Refine torque limitation monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,torque limitation,REL-00020,True
+EVAL-CR-043,Enhance network wakeup and sleep management for boundary conditions and diagnostic robustness.,Vehicle Network,network wakeup,,False
+EVAL-CR-044,Enhance thermal-runaway early detection for boundary conditions and diagnostic robustness.,Thermal,thermal runaway,REL-00026,True
+EVAL-CR-045,Improve torque limitation during faults to handle invalid or implausible conditions and improve diagnostic recovery.,Powertrain,torque limitation,REL-00047,True
+EVAL-CR-046,Enhance powertrain thermal derating for boundary conditions and diagnostic robustness.,Powertrain,thermal derating,REL-00024,True
+EVAL-CR-047,Enhance cabin air quality monitoring for boundary conditions and diagnostic robustness.,HVAC,air quality,REL-00035,True
+EVAL-CR-048,Improve anti-lock braking intervention logic to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,ABS control,REL-00026,True
+EVAL-CR-049,Improve cabin air quality monitoring to handle invalid or implausible conditions and improve diagnostic recovery.,HVAC,air quality,,False
+EVAL-CR-050,Improve motor-speed regulation to handle invalid or implausible conditions and improve diagnostic recovery.,Powertrain,speed control,REL-00005,True
+EVAL-CR-051,Enhance thermal-runaway early detection for boundary conditions and diagnostic robustness.,Thermal,thermal runaway,REL-00010,True
+EVAL-CR-052,Improve adaptive damper control to handle invalid or implausible conditions and improve diagnostic recovery.,Suspension,damper control,REL-00033,True
+EVAL-CR-053,Enhance DC fast-charging current control for boundary conditions and diagnostic robustness.,Charging,DC fast charging,REL-00028,True
+EVAL-CR-054,"Refine charge current monitoring for transient faults, plausibility handling, and safe recovery.",Battery,charge current,REL-00045,True
+EVAL-CR-055,"Refine sensor fusion monitoring for transient faults, plausibility handling, and safe recovery.",ADAS,sensor fusion,REL-00025,True
+EVAL-CR-056,"Update battery behavior for battery temperature to strengthen fault detection, fallback, and recovery.",Battery,battery temperature,,False
+EVAL-CR-057,"Refine damper control monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,damper control,REL-00031,True
+EVAL-CR-058,Enhance brake-pressure modulation and monitoring for boundary conditions and diagnostic robustness.,Braking,brake pressure,,False
+EVAL-CR-059,Improve AC charging power negotiation to handle invalid or implausible conditions and improve diagnostic recovery.,Charging,AC charging,REL-00015,True
+EVAL-CR-060,"Refine thermal derating monitoring for transient faults, plausibility handling, and safe recovery.",Powertrain,thermal derating,,False
+EVAL-CR-061,Enhance chassis vibration monitoring for boundary conditions and diagnostic robustness.,Suspension,vibration monitoring,REL-00027,True
+EVAL-CR-062,Enhance anti-lock braking intervention logic for boundary conditions and diagnostic robustness.,Braking,ABS control,REL-00011,True
+EVAL-CR-063,"Refine coolant flow monitoring for transient faults, plausibility handling, and safe recovery.",Thermal,coolant flow,,False
+EVAL-CR-064,Improve network wakeup and sleep management to handle invalid or implausible conditions and improve diagnostic recovery.,Vehicle Network,network wakeup,,False
+EVAL-CR-065,"Update charging behavior for charge scheduling to strengthen fault detection, fallback, and recovery.",Charging,charge scheduling,REL-00030,True
+EVAL-CR-066,"Refine battery temperature monitoring for transient faults, plausibility handling, and safe recovery.",Battery,battery temperature,REL-00001,True
+EVAL-CR-067,"Update steering behavior for steering angle to strengthen fault detection, fallback, and recovery.",Steering,steering angle,REL-00029,True
+EVAL-CR-068,"Refine load estimation monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,load estimation,REL-00031,True
+EVAL-CR-069,Enhance brake-pressure modulation and monitoring for boundary conditions and diagnostic robustness.,Braking,brake pressure,REL-00048,True
+EVAL-CR-070,"Update powertrain behavior for speed control to strengthen fault detection, fallback, and recovery.",Powertrain,speed control,REL-00047,True
+EVAL-CR-071,"Refine steering assist monitoring for transient faults, plausibility handling, and safe recovery.",Steering,steering assist,REL-00005,True
+EVAL-CR-072,"Refine coolant flow monitoring for transient faults, plausibility handling, and safe recovery.",Thermal,coolant flow,REL-00016,True
+EVAL-CR-073,Enhance driver warning and escalation logic for boundary conditions and diagnostic robustness.,ADAS,warning logic,REL-00008,True
+EVAL-CR-074,"Update hvac behavior for cabin airflow to strengthen fault detection, fallback, and recovery.",HVAC,cabin airflow,,False
+EVAL-CR-075,"Update powertrain behavior for thermal derating to strengthen fault detection, fallback, and recovery.",Powertrain,thermal derating,REL-00014,True
+EVAL-CR-076,"Update vehicle network behavior for CAN bus signal to strengthen fault detection, fallback, and recovery.",Vehicle Network,CAN bus signal,REL-00030,True
+EVAL-CR-077,"Refine fallback monitoring for transient faults, plausibility handling, and safe recovery.",Steering,fallback,,False
+EVAL-CR-078,Enhance wheel-speed signal plausibility and filtering for boundary conditions and diagnostic robustness.,Braking,wheel speed,REL-00010,True
+EVAL-CR-079,"Update vehicle network behavior for network wakeup to strengthen fault detection, fallback, and recovery.",Vehicle Network,network wakeup,REL-00004,True
+EVAL-CR-080,Improve driver torque sensing to handle invalid or implausible conditions and improve diagnostic recovery.,Steering,torque sensing,REL-00005,True
+EVAL-CR-081,"Refine load estimation monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,load estimation,REL-00032,True
+EVAL-CR-082,"Refine damper control monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,damper control,REL-00010,True
+EVAL-CR-083,"Update adas behavior for sensor fusion to strengthen fault detection, fallback, and recovery.",ADAS,sensor fusion,REL-00005,True
+EVAL-CR-084,Improve scheduled charging session management to handle invalid or implausible conditions and improve diagnostic recovery.,Charging,charge scheduling,REL-00021,True
+EVAL-CR-085,"Refine ride height monitoring for transient faults, plausibility handling, and safe recovery.",Suspension,ride height,,False
+EVAL-CR-086,"Refine steering angle monitoring for transient faults, plausibility handling, and safe recovery.",Steering,steering angle,REL-00049,True
+EVAL-CR-087,"Update thermal behavior for heat exchanger to strengthen fault detection, fallback, and recovery.",Thermal,heat exchanger,REL-00018,True
+EVAL-CR-088,"Refine battery temperature monitoring for transient faults, plausibility handling, and safe recovery.",Battery,battery temperature,REL-00009,True
+EVAL-CR-089,Enhance cabin air quality monitoring for boundary conditions and diagnostic robustness.,HVAC,air quality,REL-00050,True
+EVAL-CR-090,Enhance driver warning and escalation logic for boundary conditions and diagnostic robustness.,ADAS,warning logic,REL-00023,True
+EVAL-CR-091,Improve AC charging power negotiation to handle invalid or implausible conditions and improve diagnostic recovery.,Charging,AC charging,REL-00048,True
+EVAL-CR-092,Enhance multi-sensor fusion plausibility for boundary conditions and diagnostic robustness.,ADAS,sensor fusion,REL-00039,True
+EVAL-CR-093,Enhance charging-current limitation for boundary conditions and diagnostic robustness.,Battery,charge current,REL-00043,True
+EVAL-CR-094,Improve wheel-slip detection on low-friction surfaces to handle invalid or implausible conditions and improve diagnostic recovery.,Braking,wheel slip,REL-00047,True
+EVAL-CR-095,Enhance longitudinal distance estimation for boundary conditions and diagnostic robustness.,ADAS,distance estimation,REL-00041,True
+EVAL-CR-096,"Update hvac behavior for compressor control to strengthen fault detection, fallback, and recovery.",HVAC,compressor control,REL-00001,True
+EVAL-CR-097,Enhance wheel-speed signal plausibility and filtering for boundary conditions and diagnostic robustness.,Braking,wheel speed,REL-00008,True
+EVAL-CR-098,"Update adas behavior for warning logic to strengthen fault detection, fallback, and recovery.",ADAS,warning logic,,False
+EVAL-CR-099,Enhance torque limitation during faults for boundary conditions and diagnostic robustness.,Powertrain,torque limitation,REL-00050,True
+EVAL-CR-100,Enhance electric steering assist control for boundary conditions and diagnostic robustness.,Steering,steering assist,,False

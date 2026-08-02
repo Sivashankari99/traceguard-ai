@@ -54,7 +54,7 @@ class TraceGuard:
     ]
     DOCUMENT_COLUMNS = [
         "ID", "Document_ID", "Type", "Summary", "Text",
-        "State", "Project", "Spawns", "Covers", "Search_Text",
+        "State", "Project", "Spawns", "Covers", "Validates", "Search_Text",
     ]
     CHANGE_TYPES = {"Change Request", "Problem Report"}
     ALM_BASELINE_TYPES = {
@@ -91,6 +91,21 @@ class TraceGuard:
         }
         self.rrf_k = int(rrf_k) if rrf_k is not None else self.DEFAULT_RRF_K
 
+        # Seed selection: which retrieved CR/PR candidates are worth
+        # expanding traceability from at all.
+        #
+        # Rank-based (hybrid_rank, the fused RRF signal), NOT a fixed
+        # similarity threshold. Verified against real queries: raw
+        # semantic_similarity's absolute magnitude varies widely by query
+        # phrasing alone (top-candidate similarity ranged 0.62-0.77
+        # across three real test queries, with no single threshold value
+        # working for all of them — 0.70 produced zero seeds for one
+        # query and ~6 for another). hybrid_rank, being the fused
+        # lexical+semantic RRF position, is scale-invariant and
+        # discriminates more reliably than similarity alone — in the
+        # same real data, a lower-similarity candidate sometimes ranked
+        # above a higher-similarity one because RRF also weighed lexical
+        # match, exactly as intended.
         self.traceability_seed_mode = "rank"
         self.traceability_seed_max_rank = {
             "Change Request": 20,
@@ -115,7 +130,7 @@ class TraceGuard:
         self.artifacts_df = pd.read_csv(self.data_path / "artifacts.csv")
         self.baselines_df = pd.read_csv(self.data_path / "baselines.csv")
 
-        for col in ["Summary", "Text", "Spawns", "Covers", "State", "Project", "Document_ID"]:
+        for col in ["Summary", "Text", "Spawns", "Covers", "Validates", "State", "Project", "Document_ID"]:
             if col not in self.artifacts_df.columns:
                 self.artifacts_df[col] = ""
             self.artifacts_df[col] = self.artifacts_df[col].fillna("").astype(str)
@@ -203,6 +218,8 @@ class TraceGuard:
                 add_edge(src, dst, "Spawns")
             for dst in self._parse_link_ids(row.get("Covers", "")):
                 add_edge(src, dst, "Covers")
+            for dst in self._parse_link_ids(row.get("Validates", "")):
+                add_edge(src, dst, "Validates")
 
     # ------------------------------------------------------------------
     # Version 2 improvement:
@@ -320,6 +337,20 @@ class TraceGuard:
             "lexical_population": len(lexical_ids),
             "semantic_population": len(semantic_ids),
             "hybrid_retained": len(rows),
+            # Preserves what _semantic_full_ranking already computed for
+            # EVERY artifact of this type, not just the ones that
+            # survived Top-K retention above. Cosine similarity here was
+            # never skipped for non-retained artifacts — it was computed
+            # and then discarded. Carrying it forward costs nothing (no
+            # new embedding calls), and lets downstream code (e.g.
+            # evidence_fusion's topical-relevance check) look up a real
+            # similarity score for artifacts outside the retained pool,
+            # such as a spawned-child CR/PR discovered only via
+            # traceability, never through retrieval directly.
+            "full_semantic_similarity": (
+                dict(zip(semantic_df["ID"].astype(str), semantic_df["semantic_similarity"]))
+                if not semantic_df.empty else {}
+            ),
         }
         return rows, diagnostics
 
@@ -353,31 +384,106 @@ class TraceGuard:
         raise ValueError(f"Unknown traceability seed mode: {self.traceability_seed_mode}")
 
     def _expand_traceability(self, seed_ids):
+        """Typed, direction-aware lineage traversal — matches the
+        CORRECTED relationship schema after fixing 01-data-generation.ipynb
+        and regenerating artifacts.csv, verified empirically against the
+        real regenerated data:
+
+          - Release --Covers--> CR/PR                                (membership)
+          - Release --Spawns--> Release                              (hierarchy; not traversed from a CR/PR seed)
+          - ALM Requirement/Specification/Input --Spawns--> CR/PR     (upstream originator)
+          - CR/PR --Spawns--> CR/PR/Task                              (downstream follow-up; RECURSES)
+          - ALM Test Case/Test Suite --Validates--> ALM Requirement/Specification
+
+        Rules:
+          1. Release membership — ROOT seed only, via reverse:Covers.
+             Dead end: never re-checked for any descendant CR/PR/Task.
+             This is the fix for the original fan-out bug (one seed
+             pulling in ~90% of all releases via sibling CR/PRs that
+             happened to share the same release).
+          2. Upstream spawner — reverse:Spawns from the current CR/PR/
+             Task. May be an ALM Requirement/Specification/Input (a true
+             originator) OR another CR/PR (a parent in a follow-up
+             chain) — both are valid per the corrected model. If the
+             spawner is a Requirement/Specification, rule 3 also runs
+             from it.
+          3. Validation — reverse:Validates from any discovered
+             Requirement/Specification, reaching the Test Case/Suite
+             that verifies it. Dead end.
+          4. Downstream children — forward Spawns from the current
+             CR/PR, yielding child CR/PR/Task. RECURSES through rules
+             2-4, but NEVER rule 1 — a descendant's own Release is never
+             looked up, exactly as originally specified.
+
+        Cycle-safe (a path never revisits a node it already contains)
+        and capped by max_traceability_hops as a safety bound, though the
+        typed edge restrictions above — not the depth cap — are what
+        actually prevent runaway fan-out.
+        """
         discoveries = defaultdict(list)
-        for seed in seed_ids:
-            queue = deque([(seed, [seed], [], 0)])
-            best_distance = {seed: 0}
-            while queue:
-                current, path, edge_evidence, distance = queue.popleft()
-                if distance >= self.max_traceability_hops:
-                    continue
-                for neighbor, relationship in self.graph.get(current, []):
-                    if neighbor in path:
+        REQ_SPEC_TYPES = {"ALM Requirement", "ALM Specification"}
+        DOWNSTREAM_CHILD_TYPES = self.CHANGE_TYPES | {"Task"}
+
+        def neighbors_by(artifact_id, relationship):
+            return [n for n, rel in self.graph.get(artifact_id, []) if rel == relationship]
+
+        def record(artifact_id, seed_id, distance, path, edges):
+            discoveries[artifact_id].append({
+                "seed_change_id": seed_id,
+                "distance": distance,
+                "path": path,
+                "edges": edges,
+            })
+
+        def walk(current_id, seed_id, distance, path, edges, at_root):
+            if distance >= self.max_traceability_hops:
+                return
+
+            # Rule 1: Release membership — root only, dead end.
+            if at_root:
+                for release_id in neighbors_by(current_id, "reverse:Covers"):
+                    if self.artifact_lookup.get(release_id, {}).get("Type") != "Release":
                         continue
-                    new_distance = distance + 1
-                    new_path = path + [neighbor]
-                    new_edges = edge_evidence + [{
-                        "from": current, "to": neighbor, "relationship": relationship
-                    }]
-                    discoveries[neighbor].append({
-                        "seed_change_id": seed,
-                        "distance": new_distance,
-                        "path": new_path,
-                        "edges": new_edges,
-                    })
-                    if new_distance < best_distance.get(neighbor, math.inf):
-                        best_distance[neighbor] = new_distance
-                        queue.append((neighbor, new_path, new_edges, new_distance))
+                    if release_id in path:
+                        continue
+                    record(
+                        release_id, seed_id, distance + 1, path + [release_id],
+                        edges + [{"from": current_id, "to": release_id, "relationship": "reverse:Covers"}],
+                    )
+
+            # Rule 2 (+3): upstream spawner, then Validates if it's a Req/Spec.
+            for spawner_id in neighbors_by(current_id, "reverse:Spawns"):
+                if spawner_id in path:
+                    continue
+                spawner_path = path + [spawner_id]
+                spawner_edges = edges + [{"from": current_id, "to": spawner_id, "relationship": "reverse:Spawns"}]
+                record(spawner_id, seed_id, distance + 1, spawner_path, spawner_edges)
+
+                spawner_type = self.artifact_lookup.get(spawner_id, {}).get("Type")
+                if spawner_type in REQ_SPEC_TYPES:
+                    for test_id in neighbors_by(spawner_id, "reverse:Validates"):
+                        if test_id in spawner_path:
+                            continue
+                        record(
+                            test_id, seed_id, distance + 2, spawner_path + [test_id],
+                            spawner_edges + [{"from": spawner_id, "to": test_id, "relationship": "reverse:Validates"}],
+                        )
+
+            # Rule 4: downstream children — recurse, Rule 1 excluded.
+            for child_id in neighbors_by(current_id, "Spawns"):
+                if self.artifact_lookup.get(child_id, {}).get("Type") not in DOWNSTREAM_CHILD_TYPES:
+                    continue  # excludes Release's own child-release Spawns
+                if child_id in path:
+                    continue
+                child_path = path + [child_id]
+                child_edges = edges + [{"from": current_id, "to": child_id, "relationship": "Spawns"}]
+                record(child_id, seed_id, distance + 1, child_path, child_edges)
+                walk(child_id, seed_id, distance + 1, child_path, child_edges, at_root=False)
+
+        for seed in seed_ids:
+            seed = str(seed)
+            walk(seed, seed, 0, [seed], [], at_root=True)
+
         return discoveries
 
     # ------------------------------------------------------------------
@@ -442,6 +548,44 @@ class TraceGuard:
                 "unlinked_relevant": bool(row["unlinked_relevant"]),
                 "candidate_category": row["candidate_category"],
                 "review_rank_score": round(float(row["review_rank_score"]), 6),
+            })
+        return records
+
+    def _build_context_records_from_discoveries(self, discoveries):
+        """Lightweight context-record builder for TRACEABILITY-ONLY
+        candidates — used when assess_impact is composed directly after
+        trace() (e.g. a planner-built lookup -> trace -> assess_impact
+        sequence), without going through analyze()'s full retrieval +
+        ranking pipeline.
+
+        Deliberately simpler than _build_context_records: there is no
+        semantic_similarity, lexical_score, candidate_category, or
+        review_rank_score to report, because no retrieval ran. Those
+        fields are set to None/a plain label rather than fabricated.
+        """
+        records = []
+        for artifact_id, paths in discoveries.items():
+            row = self.artifact_lookup.get(str(artifact_id))
+            if row is None:
+                continue
+            records.append({
+                "artifact_id": str(artifact_id),
+                "artifact_type": str(row.get("Type", "")),
+                "state": str(row.get("State", "")),
+                "project": str(row.get("Project", "")),
+                "summary": str(row.get("Summary", "")),
+                "text": str(row.get("Text", "")),
+                "semantic_similarity": None,
+                "semantic_rank": None,
+                "lexical_score": None,
+                "lexical_rank": None,
+                "retrieval_sources": ["Traceability expansion"],
+                "traceability_status": "Linked",
+                "traceability_hops": min((p["distance"] for p in paths), default=None),
+                "traceability_paths": self._format_trace_paths(paths),
+                "unlinked_relevant": False,
+                "candidate_category": "Traceability-only candidate (no retrieval evidence)",
+                "review_rank_score": None,
             })
         return records
 
@@ -651,6 +795,83 @@ Return this exact top-level structure:
             }
         return affected_df, determination
 
+    def _determine_baselines_from_traceability(self, seed_ids, discoveries):
+        """Release/baseline determination using ONLY traceability evidence
+        — no LLM judgment, no impact_level required. An artifact counts as
+        'relevant' simply because traversal reached it (or it was a seed),
+        not because an LLM scored its impact.
+
+        This is intentionally separate from _determine_baselines (which
+        requires an LLM-produced impact_assessment) — both can run and be
+        compared, since they answer the same question from different
+        evidence.
+        """
+        traced_ids = set(discoveries.keys()) | {str(s) for s in seed_ids}
+
+        relevant_change_ids = {
+            aid for aid in traced_ids
+            if self.artifact_lookup.get(aid, {}).get("Type") in self.CHANGE_TYPES
+        }
+        impacted_alm_ids = {
+            aid for aid in traced_ids
+            if self.artifact_lookup.get(aid, {}).get("Type") in self.ALM_BASELINE_TYPES
+        }
+
+        release_to_changes = {}
+        for _, row in self.artifacts_df[self.artifacts_df["Type"] == "Release"].iterrows():
+            release_to_changes[str(row["ID"])] = set(self._parse_link_ids(row["Covers"]))
+
+        baseline_members = defaultdict(set)
+        for _, row in self.baselines_df.iterrows():
+            baseline_members[str(row["Release_ID"])].add(str(row["Artifact_ID"]))
+
+        rows = []
+        for release_id, covered_changes in release_to_changes.items():
+            supporting = sorted(relevant_change_ids.intersection(covered_changes))
+            if not supporting:
+                continue
+            members = sorted(impacted_alm_ids.intersection(baseline_members.get(release_id, set())))
+            if not members:
+                continue
+            rows.append({
+                "Release_ID": release_id,
+                "Baseline_ID": f"BL-{release_id}",
+                "Supporting_CR_PR_IDs": ", ".join(supporting),
+                "Affected_ALM_Artifact_IDs": ", ".join(members),
+                "Supporting_CR_PR_Count": len(supporting),
+                "Affected_ALM_Count": len(members),
+                "Determination": "Traceability-supported baseline impact (no LLM judgment)",
+            })
+
+        affected_df = pd.DataFrame(rows)
+        if affected_df.empty:
+            determination = {
+                "status": "Undetermined",
+                "reason": (
+                    "No traced Change Request or Problem Report could be connected "
+                    "through an explicit Release Covers relationship to a Release "
+                    "baseline that also contains a traced ALM artifact."
+                ),
+                "affected_release_ids": [],
+                "affected_baseline_ids": [],
+                "method": "traceability_only",
+            }
+        else:
+            affected_df = affected_df.sort_values(
+                ["Supporting_CR_PR_Count", "Affected_ALM_Count"], ascending=False
+            ).reset_index(drop=True)
+            determination = {
+                "status": "Determined",
+                "reason": (
+                    "Explicit CR/PR -> Release traceability plus ALM baseline "
+                    "membership (traceability-only, no LLM judgment)."
+                ),
+                "affected_release_ids": affected_df["Release_ID"].tolist(),
+                "affected_baseline_ids": affected_df["Baseline_ID"].tolist(),
+                "method": "traceability_only",
+            }
+        return affected_df, determination
+
     # ------------------------------------------------------------------
     # analyze() — Flow:
     #   Lexical Search ─┐
@@ -685,11 +906,13 @@ Return this exact top-level structure:
 
         hybrid_results_by_type = {}
         retrieval_diagnostics_rows = []
+        full_semantic_similarity = {}
 
         for artifact_type in self.retrieval_types:
             rows, diagnostics = self._hybrid_retrieve(query, artifact_type, query_embedding)
             hybrid_results_by_type[artifact_type] = rows
             retrieval_diagnostics_rows.append(diagnostics)
+            full_semantic_similarity.update(diagnostics.get("full_semantic_similarity", {}))
 
         # Candidate pool = only the fused Top-K per type. This is the only
         # retrieval evidence that feeds traceability expansion — no
@@ -788,6 +1011,9 @@ Return this exact top-level structure:
                 "ranked_candidates_df": pd.DataFrame(),
                 "selected_candidates_df": pd.DataFrame(),
                 "retrieval_diagnostics": retrieval_diagnostics,
+                "seed_ids": seed_ids,
+                "discoveries": discoveries,
+                "full_semantic_similarity": full_semantic_similarity,
             }
 
         candidates_df["has_semantic_evidence"] = candidates_df["semantic_similarity"].notna()
@@ -874,4 +1100,7 @@ Return this exact top-level structure:
             "selected_candidates_df": selected,
             "retrieval_diagnostics": retrieval_diagnostics,
             "prompt": prompt,
+            "seed_ids": seed_ids,
+            "discoveries": discoveries,
+            "full_semantic_similarity": full_semantic_similarity,
         }
