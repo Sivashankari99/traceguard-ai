@@ -48,6 +48,7 @@ TOOL_DESCRIPTIONS = _build_tool_descriptions()
 @dataclass
 class ExecutionPlan:
     goal: str
+    status: str           # "plan" | "clarification" | "not_engineering" -- the Planner's actual decision
     steps: list          # list[str] -- tool names, SAME shape as WORKFLOWS[intent]["steps"]
     reasoning: str
     valid: bool
@@ -91,6 +92,24 @@ AVAILABLE TOOLS (use ONLY these, by exact name):
 Build the SHORTEST ordered sequence of tools that answers the goal.
 
 Rules:
+0. First decide whether this query can be answered by these tools at all:
+   - If the query is NOT a genuine engineering request about a Change
+     Request, Problem Report, Requirement, Specification, Test Case,
+     Task, or Release -- e.g. small talk, greetings, or anything
+     unrelated to this domain -- respond with status "not_engineering"
+     and an empty steps list. Do NOT force a plan onto irrelevant input.
+   - If the query IS a genuine engineering request, but has NO
+     discernible subject or specific ask at all (e.g. "can you help me"
+     or "check on the status of things" with nothing further), respond
+     with status "clarification", an empty steps list, and put the
+     actual clarifying question you'd ask the user in "reasoning".
+   - IMPORTANT: a specific, clearly-described engineering change or
+     problem -- even with NO artifact ID cited at all -- is NOT vague.
+     That is exactly what full_impact_analysis is for; a missing ID is
+     expected and normal for this case, not a reason to ask for
+     clarification. Only use "clarification" when the request itself has
+     no discernible engineering subject, not merely because it lacks an ID.
+   - Otherwise, respond with status "plan" and build the steps as below.
 1. Only use tool names from the list above, spelled exactly as shown.
 2. Prefer the fewest steps that genuinely answer the goal. Do not add
    assess_impact, validate, evidence_fusion, or determine_baseline
@@ -119,21 +138,38 @@ Rules:
    JSON, in exactly this shape:
 
 {{
+  "status": "plan",
   "steps": ["lookup", "trace"],
-  "reasoning": "One or two sentences on why this sequence answers the goal."
+  "reasoning": "One or two sentences on why this sequence answers the goal, OR (if status is clarification) the actual question to ask the user, OR (if status is not_engineering) a brief note on why."
 }}
+
+status must be exactly one of: "plan", "clarification", "not_engineering".
+When status is "clarification" or "not_engineering", steps MUST be [].
 """.strip()
 
     def create_plan(self, goal, query_text, entity_id=None):
         prompt = self._build_prompt(goal, query_text, entity_id)
         raw = self.engine._call_llm(prompt)
 
-        steps = [str(s) for s in raw.get("steps", [])]
+        status = raw.get("status", "plan")
         reasoning = raw.get("reasoning", "")
+
+        if status in ("not_engineering", "clarification"):
+            return ExecutionPlan(
+                goal=goal, status=status, steps=[], reasoning=reasoning,
+                valid=False,
+                validation_errors=[
+                    "Query is not a genuine engineering request." if status == "not_engineering"
+                    else "Planner needs clarification from the user."
+                ],
+                prompt=prompt, raw_response=raw,
+            )
+
+        steps = [str(s) for s in raw.get("steps", [])]
 
         errors = self._validate_plan(steps)
         return ExecutionPlan(
-            goal=goal, steps=steps, reasoning=reasoning,
+            goal=goal, status="plan", steps=steps, reasoning=reasoning,
             valid=(len(errors) == 0), validation_errors=errors,
             prompt=prompt, raw_response=raw,
         )

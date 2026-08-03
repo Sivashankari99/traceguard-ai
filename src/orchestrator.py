@@ -139,20 +139,39 @@ class Orchestrator:
             plan = self.planner.create_plan(goal, query_text, entity_id=decision.entity_id)
 
             if not plan.valid or not plan.steps:
+                if plan.status == "not_engineering":
+                    workflow_label = "rejected:not_engineering"
+                    message = (
+                        "That doesn't look like a question about engineering artifacts "
+                        "(Change Requests, Problem Reports, Requirements, Specifications, "
+                        "Test Cases, Tasks, or Releases) -- I can't help with that here."
+                    )
+                elif plan.status == "clarification":
+                    workflow_label = "clarification"
+                    message = plan.reasoning or (
+                        "I need a bit more detail to help with that -- could you clarify "
+                        "what you're asking about, or provide a specific artifact ID?"
+                    )
+                else:
+                    # A genuinely broken/hallucinated plan (unknown tool, too
+                    # long, duplicate steps) -- distinct from the two cases
+                    # above, since here the Planner DID think it could help,
+                    # it just produced something unusable.
+                    workflow_label = "clarification"
+                    message = (
+                        "I'm not confident enough to route that automatically, and "
+                        "couldn't compose a valid fallback plan either "
+                        f"({'; '.join(plan.validation_errors) or 'no steps proposed'}). "
+                        "Could you rephrase, or provide a specific artifact ID (e.g. CR-00123)?"
+                    )
+
                 return OrchestratorResult(
-                    workflow="clarification",
+                    workflow=workflow_label,
                     entity_id=decision.entity_id,
                     confidence=decision.confidence,
-                    reason=(
-                        f"{decision.reason} Planner also could not build a "
-                        f"valid plan: {'; '.join(plan.validation_errors) or 'no steps proposed'}."
-                    ),
+                    reason=f"{decision.reason} Planner status: {plan.status}.",
                     steps_run=[],
-                    final_response=(
-                        "I'm not confident enough to route that automatically, and "
-                        "couldn't compose a fallback plan either. Could you rephrase, "
-                        "or provide a specific artifact ID (e.g. CR-00123)?"
-                    ),
+                    final_response=message,
                     success=False,
                     tool_call_count=0,
                     execution_time_seconds=time.perf_counter() - start,

@@ -1,345 +1,185 @@
 # TraceGuard AI
 
-### Hybrid RAG + Traceability-Aware Engineering Change Impact Analysis
+### Agentic AI for Engineering Change Impact Analysis
 
-TraceGuard AI is an AI-assisted engineering change impact analysis prototype that explores how **Retrieval-Augmented Generation (RAG), hybrid retrieval, engineering traceability, and Large Language Models (LLMs)** can support impact analysis in automotive engineering environments.
+TraceGuard AI is an AI-assisted engineering change impact analysis system that explores how **Retrieval-Augmented Generation (RAG), semantic search, engineering traceability, LLM reasoning, and lightweight agentic orchestration** can support impact analysis in automotive engineering environments.
 
-Given a proposed engineering change, TraceGuard searches a synthetic engineering knowledge base to identify potentially affected artifacts such as Change Requests, Problem Reports, requirements, specifications, test cases, tasks, releases, and other lifecycle artifacts.
+Given a proposed engineering change — or a question about a known artifact, release, or baseline — TraceGuard routes the request through the cheapest mechanism capable of answering it correctly: fixed keyword rules, semantic matching, a composed agent plan, or (only when genuinely needed) a full retrieval + traceability + LLM assessment pipeline.
 
-Rather than relying only on keyword matching, TraceGuard combines **lexical retrieval, semantic retrieval, and existing traceability relationships** before providing grounded engineering evidence to an LLM for impact assessment.
-
-Version 2 replaces ad-hoc evidence merging with **validated Reciprocal Rank Fusion (RRF)**, based on retrieval experiments carried out in the project's Module 3 vector-search notebook.
-
-The objective is not to automate engineering decisions, but to provide engineers with a structured and explainable candidate impact analysis for human review.
+The objective is to assist engineers by providing structured, explainable impact analysis while keeping the final engineering decision with the human reviewer.
 
 ---
 
-## 🚀 Project Goals
+## 📚 Table of Contents
 
-TraceGuard AI explores how AI-assisted retrieval and reasoning can help:
+- [Project Goals](#project-goals)
+- [Current Capabilities](#current-capabilities)
+- [Architecture Overview](#architecture-overview)
+- [Request Pipeline](#request-pipeline)
+- [Traceability Model](#traceability-model)
+- [Workflows](#workflows)
+- [Agent Planner](#agent-planner)
+- [Project Structure](#project-structure)
+- [Example Usage](#example-usage)
+- [Dataset](#dataset)
+- [Evaluation](#evaluation)
+- [Current Status](#current-status)
+- [Known Limitations](#known-limitations)
+- [Planned Development](#planned-development)
+- [Design Principle](#design-principle)
+- [Disclaimer](#disclaimer)
+
+---
+
+<a id="architecture-overview"></a>
+
+## 🗺️ Architecture Overview
+
+![TraceGuard AI Architecture](./docs/architecture.png)
+
+---
+
+<a id="project-goals"></a>
+
+## 🚀 Project Goals
 
 - Identify potentially impacted engineering artifacts from a proposed change.
 - Discover related Change Requests and Problem Reports.
 - Identify potentially affected requirements, specifications, tests, and tasks.
-- Use existing traceability relationships as additional engineering evidence.
-- Identify potential release and baseline impacts.
-- Generate structured and explainable AI-assisted impact assessments.
+- Use existing traceability relationships as additional engineering evidence, independent of textual similarity.
+- Identify potential release and baseline impacts — from two independent signals (LLM judgment and raw traceability), compared rather than silently merged.
+- Route each request through the least expensive mechanism that can answer it correctly, rather than always running the full pipeline.
+- Handle requests that don't fit any fixed workflow by composing a plan from atomic tools, instead of defaulting to "I don't understand."
 - Reduce the effort required to manually explore large engineering artifact repositories.
 - Support human engineering and configuration management review rather than replace it.
 
 ---
 
+<a id="current-capabilities"></a>
+
 ## 🧠 Current Capabilities
 
-The current TraceGuard prototype (Version 2) implements a **Hybrid RAG + RRF-Fused + Traceability-Aware Impact Analysis** pipeline.
-
-It currently supports:
-
-- **Lexical retrieval** using MinSearch, ranked over the full artifact population per type.
-- **Semantic retrieval** using Sentence Transformers (MiniLM), ranked over the full artifact population per type.
-- **Hybrid candidate discovery via Reciprocal Rank Fusion (RRF)** — lexical and semantic rankings are fused by rank position, not by merging raw scores from two differently calibrated spaces.
-- **Top-K candidate selection performed after fusion**, not before — so no candidate is chosen based on either signal in isolation.
-- **Artifact-type-aware retrieval** across different engineering artifact categories.
-- **Traceability-aware expansion** using existing artifact relationships.
-- **Candidate ranking** driven by the fused RRF signal plus a traceability bonus, while preserving underlying lexical/semantic evidence for review.
-- **Retrieval diagnostics** reporting lexical/semantic population size, hybrid-retained counts, traceability seed/discovery counts, and final candidate counts sent to the LLM.
-- **LLM-assisted engineering impact assessment** using retrieved context.
-- **Input relevance classification** to reject queries outside the engineering knowledge domain.
-- **Grounding validation** to detect unsupported artifact or traceability claims.
-- **Release and baseline impact determination** using available traceability evidence.
-- **Structured impact reports** containing impact level, confidence, traceability status, and reasoning.
-
-The retrieval pipeline's embedding model and RRF fusion constant (`rrf_k`) are configurable at initialization, allowing different embedding models or fusion tuning to be evaluated without changing the overall engineering impact analysis workflow.
+- **Lexical retrieval** using MinSearch.
+- **Semantic retrieval** using Sentence Transformers, fused with lexical results via Reciprocal Rank Fusion (RRF) — not a manual blend of two differently-scaled raw scores.
+- **Artifact-type-aware retrieval** across all engineering artifact categories, with full per-type semantic scoring preserved (not discarded after Top-K selection) so downstream evidence checks can look up any artifact's real similarity, not just retained candidates.
+- **Typed, direction-aware traceability expansion** — Release membership, upstream originator, downstream follow-up, and test-validation links are each distinct, verified relationship types (see *Traceability Model* below), not a single undifferentiated graph walk.
+- **Rank-based traceability seeding** — which retrieved candidates earn a traceability expansion is decided by fused rank position, not a fixed similarity number (an earlier fixed-threshold approach was tested against real queries and found unreliable — see *Known Limitations*).
+- **Dual, independent baseline/release determination** — one signal from LLM judgment, one from raw traceability data alone (zero LLM cost) — compared via evidence fusion rather than merged silently.
+- **A 3-layer request pipeline**: fixed lexical rules → semantic fallback → an LLM-based Agent Planner that composes a fresh tool sequence for anything the first two layers can't confidently route (see *Agentic Orchestration* below).
+- **LLM-assisted engineering impact assessment**, grounded strictly in supplied evidence — instructed not to invent artifact IDs, relationships, or traceability paths.
+- **A genuine three-way relevance decision** (not just accept/reject): the system can build a plan, ask a real clarifying question, or explicitly decline a request as outside the engineering domain — each with a distinct, honest response, not one generic fallback message.
+- **Grounding validation** to detect unsupported artifact or relationship claims in LLM output.
+- **Structured impact reports** containing impact level, confidence, traceability status, candidate category, and reasoning per artifact.
 
 ---
 
-## 🔍 How TraceGuard Works
+<a id="request-pipeline"></a>
+
+## 🧭 Request Pipeline
 
 ```text
-Incoming Engineering Change
-            │
-            ▼
- ┌──────────────────────────┐
- │      Lexical Search      │
- │       (MinSearch,        │
- │    full population)      │
- └────────────┬─────────────┘
-              │
- ┌────────────┴─────────────┐
- │      Semantic Search     │
- │  (MiniLM, cosine sim.,   │
- │    full population)      │
- └────────────┬─────────────┘
-              │
-              ▼
-     Reciprocal Rank Fusion
-        (RRF, per type)
-              │
-              ▼
-      Top-K Candidates
-      (selected AFTER
-          fusion)
-              │
-              ▼
-      Traceability-Aware
-          Expansion
-              │
-              ▼
-      Candidate Ranking
-   (fused rank + traceability
-          bonus)
-              │
-              ▼
-      Retrieval Diagnostics
-      (counts at each stage)
-              │
-              ▼
-       Candidate Context
-              │
-              ▼
-        LLM Relevance
-            Check
-              │
-        ┌─────┴─────┐
-        │           │
-   Irrelevant    Relevant
-        │           │
-        ▼           ▼
-       Stop       LLM Impact
-                  Assessment
-                      │
-                      ▼
-               Grounding
-                Validation
-                      │
-                      ▼
-             Release/Baseline
-              Determination
-                      │
-                      ▼
-              Structured Human
-                Review Report
+                        User Query
+                             │
+                             ▼
+                    Entity Extraction
+               (artifact ID, if present)
+                             │
+                             ▼
+                  Lexical Intent Rules
+              (keyword + entity patterns)
+                             │
+                  High confidence? ──Yes──▶ Run the matching
+                             │              fixed workflow
+                             No
+                             ▼
+                   Semantic Fallback
+          (embedding similarity vs. workflow
+                exemplars, real domain text)
+                             │
+                  High confidence? ──Yes──▶ Run the matching
+                             │              fixed workflow
+                             No
+                             ▼
+                     Agent Planner
+        (LLM composes a fresh tool sequence,
+           or explicitly declines to)
+                             │
+              ┌──────────────┼──────────────┐
+              ▼               ▼              ▼
+        Valid plan      Needs a real     Not an engineering
+              │          clarifying         request at all
+              ▼            question             │
+        Orchestrator          │                 ▼
+        executes steps        ▼            Declined, no
+              │           Ask the           tool call runs
+              ▼            user
+        Structured result
 ```
 
----
-
-## 🔎 Hybrid Retrieval
-
-TraceGuard uses multiple complementary evidence sources rather than relying on a single retrieval technique — and, in Version 2, fuses the two retrieval signals in a way that has been validated rather than assumed.
-
-### 1. Lexical Retrieval
-
-Lexical retrieval is performed using **MinSearch**, ranked over every artifact of a given type.
-
-It identifies engineering artifacts containing words and terminology related to the incoming change.
-
-This approach is particularly useful when the proposed change uses terminology that closely matches existing engineering artifacts.
+Every layer after entity extraction is a genuine decision point, not a rubber stamp — a query only reaches the Planner if both cheaper layers were honestly uncertain, and the Planner itself can refuse rather than force a plan onto irrelevant input.
 
 ---
 
-### 2. Semantic Retrieval
+<a id="traceability-model"></a>
 
-TraceGuard also uses **Sentence Transformers (all-MiniLM-L6-v2)** to generate normalized embeddings for engineering artifact text and incoming change descriptions, ranked by cosine similarity over every artifact of a given type.
+## 🔗 Traceability Model
 
-Semantic similarity allows TraceGuard to identify conceptually related artifacts even when the wording is different.
+Verified empirically against the actual dataset (not assumed) after an earlier version of the data generator had two relationships backwards:
 
-For example, an incoming change may contain incomplete descriptions, alternate terminology, or spelling mistakes while still expressing an engineering concept represented in the knowledge base.
+| Relationship | Meaning |
+|---|---|
+| `Release --Covers--> CR/PR` | Release membership |
+| `Release --Spawns--> Release` | Release hierarchy (not traversed from a CR/PR seed) |
+| `ALM Requirement / Specification / Input --Spawns--> CR/PR` | Upstream originator of a change |
+| `CR/PR --Spawns--> CR/PR / Task` | Downstream follow-up work |
+| `ALM Test Case / Test Suite --Validates--> ALM Requirement / Specification` | Verification coverage |
 
-This complements lexical search by providing meaning-based retrieval.
+Traceability expansion from a known artifact follows these rules:
 
----
-
-### 3. Hybrid Fusion via Reciprocal Rank Fusion (RRF)
-
-Earlier versions of TraceGuard tracked lexical and semantic evidence independently and merged them by taking the best available score per artifact. Version 2 replaces this with **Reciprocal Rank Fusion**, validated against the project's Module 3 vector-search experiments:
-
-- Lexical and semantic retrieval each produce a **complete ranking** of every artifact in a type — not just a shortlist.
-- RRF combines those two full rankings using **rank position**, not raw score, since TF-IDF-style lexical scores and cosine similarity scores live in different, non-comparable scales.
-- **Top-K candidates are selected only after fusion**, so no artifact is chosen purely because it ranked well on one signal alone — it has to rank well in the fused ordering.
-
-This is the single most significant retrieval change in Version 2 and is the basis for everything downstream.
-
----
-
-### 4. Traceability-Aware Discovery
-
-Textual similarity alone does not represent engineering traceability.
-
-TraceGuard therefore preserves existing engineering relationships as a separate evidence source, applied **after** the fused Top-K candidates are selected.
-
-Relevant artifacts can be expanded through available traceability relationships to discover connected:
-
-- Change Requests
-- Problem Reports
-- Requirements
-- Specifications
-- Test artifacts
-- Tasks
-- Releases
-- Other lifecycle artifacts
-
-Similarity and traceability are intentionally treated as **different evidence signals**.
-
-A highly similar artifact does not automatically prove engineering impact, while an existing traceability relationship provides additional evidence that should be considered during review.
+1. **Release membership is recorded once, for the root artifact only** — traversal never steps sideways from a Release into sibling CR/PRs it also covers. (An earlier version of this logic treated Release as a hub and could pull in ~90% of all releases in the dataset from a single seed; this is now structurally prevented, not just tuned down.)
+2. **Upstream spawner** — may be an ALM originator or a parent CR/PR in a follow-up chain.
+3. **Validation** — from any discovered Requirement/Specification, to the Test Case/Suite that verifies it.
+4. **Downstream children** — recursed, but rule 1 never repeats for a descendant.
 
 ---
 
-## 🗂️ Artifact-Type-Aware Retrieval
+<a id="workflows"></a>
 
-Engineering repositories contain artifact types with very different characteristics and dataset sizes.
+## ⚙️ Workflows
 
-TraceGuard therefore performs candidate retrieval, RRF fusion, and Top-K selection **independently per artifact type**, before traceability expansion combines results across types.
+| Workflow | Steps | LLM cost |
+|---|---|---|
+| `direct_lookup` | `lookup` | None |
+| `similarity_check` | `retrieve` | None |
+| `traceability_trace` | `lookup → trace` | None |
+| `baseline_check` | `lookup → trace → baseline_evidence` | **None** — genuinely zero-LLM release/baseline determination |
+| `full_impact_analysis` | `full_impact_analysis → baseline_evidence → evidence_fusion` | Yes |
 
-The synthetic dataset currently contains artifact categories such as:
+`baseline_check` and `full_impact_analysis` both answer "is a release/baseline affected," from two independent evidence sources that are never silently merged:
 
-- Change Requests
-- Problem Reports
-- ALM Inputs
-- ALM Requirements
-- ALM Specifications
-- ALM Test Suites
-- ALM Test Cases
-- Tasks
-- Releases
-
-Candidate retention (Top-K per type, post-fusion) is configurable by artifact type rather than assuming that the same retrieval configuration is appropriate for every category.
+- **`baseline_evidence`** — traceability-only (`Covers` / `baselines.csv` membership), no LLM call needed.
+- **LLM-based determination** — inside `full_impact_analysis`, filtered by the LLM's own High/Medium impact judgments.
+- **`evidence_fusion`** — compares the two, reporting agreement, LLM-only, and evidence-only findings separately. Evidence-only findings are further ranked by real query-similarity (using the full, non-Top-K-limited similarity map, not just retained candidates) so a release backed by one strongly-matched artifact correctly outranks one backed by several weakly-matched ones.
 
 ---
 
-## 🔗 Evidence Aggregation
+<a id="agent-planner"></a>
 
-An artifact reaching the LLM context can be discovered through more than one mechanism:
+## 🤖 Agent Planner
 
-- Retained in the fused RRF Top-K (with its underlying lexical and semantic scores preserved for display).
-- Connected through existing traceability from a seed Change Request or Problem Report.
-- Discovered through multiple traceability paths.
+When neither lexical rules nor semantic matching confidently routes a request, an LLM-based Planner composes a fresh tool sequence directly from the underlying tools — it has no built-in concept of the 5 fixed workflows above, only of what each tool needs and produces (read from each tool's own docstring, not a separately-maintained description that could drift out of sync).
 
-TraceGuard preserves these evidence sources instead of discarding them when candidate results are merged, allowing downstream impact assessment to distinguish between **similarity evidence** and **traceability evidence**.
+The Planner makes a genuine three-way decision on every query:
 
----
+- **`plan`** — builds an ordered tool sequence (e.g. `lookup → trace` for "explain this artifact," a pattern with no matching fixed workflow).
+- **`clarification`** — the request is a real engineering question but too vague to act on; the Planner's own clarifying question is shown to the user, not a generic error.
+- **`not_engineering`** — the request is outside the domain entirely (small talk, unrelated topics); declined with zero tool calls, rather than forcing a plan onto irrelevant input.
 
-## 📊 Retrieval Diagnostics
-
-Version 2 introduces explicit retrieval diagnostics returned alongside every `analyze()` result, so the retrieval pipeline's behavior is visible rather than opaque:
-
-- Lexical population size and semantic population size, per artifact type.
-- Hybrid-retained (post-RRF Top-K) count, per artifact type.
-- Number of traceability seeds selected from the fused candidates.
-- Number of artifacts newly discovered through traceability expansion.
-- Number of "unlinked relevant" candidates (similarity-discovered but not traceability-linked).
-- Final candidate pool size and number of candidates actually sent to the LLM context.
-
-This makes it possible to reason about retrieval behavior and tune per-type Top-K settings without re-running the full pipeline blind.
+Every proposed plan is mechanically validated before execution — unknown tool names, plans longer than 7 steps (only 9 tools exist; longer means looping), and consecutive duplicate steps are all rejected before anything runs. The full **prompt → raw LLM response → validated plan → executed steps** chain is preserved for debugging, not just the final outcome.
 
 ---
 
-## 🤖 LLM-Assisted Impact Assessment
-
-After candidate discovery, fusion, Top-K selection, and traceability expansion, selected candidate artifacts are supplied to an LLM for impact assessment.
-
-The LLM is instructed to:
-
-- Use only the supplied candidate artifacts.
-- Avoid inventing artifact IDs.
-- Avoid inventing engineering relationships.
-- Avoid inventing traceability paths.
-- Distinguish similarity from traceability.
-- Assess potential engineering impact.
-- Communicate uncertainty.
-- Provide reasoning for identified candidates.
-- Classify the relevance of the incoming query before performing impact analysis.
-
-The LLM therefore acts as an **assessment layer over retrieved engineering evidence**, rather than independently searching or inventing engineering artifacts.
-
----
-
-## 🚫 Input Relevance Checking
-
-Retrieval systems will normally return the closest available results even when a query is unrelated to the dataset.
-
-TraceGuard therefore includes an LLM-based domain relevance check.
-
-Before performing impact assessment, the model determines whether the proposed change is meaningfully related to the engineering domain represented by the available artifacts.
-
-For example, an unrelated query such as:
-
-```text
-Can I join class in July?
-```
-
-is classified as:
-
-```text
-Input relevance: Irrelevant
-```
-
-and no artifact impact assessment is produced.
-
-At the same time, noisy but engineering-related inputs can still proceed through impact analysis.
-
-This helps prevent the system from forcing engineering interpretations onto unrelated user inputs.
-
----
-
-## 🛡️ Grounding Validation
-
-LLM-generated engineering assessments should remain grounded in retrieved evidence.
-
-TraceGuard therefore performs post-assessment grounding validation.
-
-The validation checks whether:
-
-- Returned artifact IDs exist in the supplied candidate context.
-- Claimed traceability relationships are supported by discovered evidence.
-- Referenced traceability paths were actually available to the model.
-- Linked claims correspond to relationships represented in the source data.
-
-This provides an additional safeguard against unsupported LLM-generated engineering claims.
-
----
-
-## 📦 Release and Baseline Impact
-
-TraceGuard also explores whether identified High or Medium impact Change Requests or Problem Reports can be connected to releases through explicit engineering relationships.
-
-Where sufficient evidence exists, the system can identify potentially affected release or baseline information.
-
-If the available evidence is insufficient, the result remains:
-
-```text
-Undetermined
-```
-
-rather than inferring a release or baseline impact without supporting evidence.
-
----
-
-## 📊 Impact Assessment Output
-
-The current impact report provides information such as:
-
-- Artifact ID
-- Artifact type
-- Potential impact level
-- Candidate category
-- Traceability status
-- Confidence
-- Reason for potential impact
-
-Example conceptual output:
-
-```text
-Artifact ID    Artifact Type       Impact     Traceability    Confidence
------------------------------------------------------------------------
-INP-00006      ALM Input           High       Linked          High
-SPEC-00642     ALM Specification   High       Linked          High
-PR-00226       Problem Report      Medium     Linked          Medium
-TC-01489       ALM Test Case       High       Linked          High
-```
-
-Future versions will enrich the report with additional artifact metadata, summaries, and more detailed traceability explanations.
-
----
+<a id="project-structure"></a>
 
 ## 📁 Project Structure
 
@@ -349,234 +189,135 @@ traceguard-ai/
 ├── data/
 │   ├── artifacts.csv
 │   ├── baselines.csv
-│   └── evaluation_ground_truth.csv
-|   └── evaluation_new_crs.csv
+│   ├── evaluation_ground_truth.csv
+│   └── evaluation_new_crs.csv
 │
 ├── notebooks/
 │   ├── 01-data-generation.ipynb
-│   ├── 02-basic-rag.ipynb
 │   ├── 02-traceguard-simple-runner.ipynb
-│   └── 03-vector-search.ipynb
+│   └── 04-planner-evaluation-runner.ipynb
 │
 ├── src/
-│   ├── __init__.py
-│   ├── traceguard_v1.py
-│   └── traceguard_v2.py
+│   ├── traceguard_v2.py       # Core engine: retrieval, traceability, LLM assessment
+│   ├── tools.py               # 9 atomic tools, each wrapping engine logic behind a context-based call
+│   ├── workflows.py           # The 5 fixed workflows (data, not code)
+│   ├── intent_router.py       # Layer 1: lexical rules + semantic fallback
+│   ├── planner.py             # Layer 3: Agent Planner + plan validation
+│   ├── orchestrator.py        # Layer 2: executes a workflow's or plan's steps
+│   ├── config/
+│   │   └── intents.py         # Keyword lists, exemplar phrases, confidence thresholds
+│   └── test_intent_router.py  # 22-case routing regression suite
 │
-├── main.py
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
 ```
 
-### `01-data-generation.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/01-data-generation.ipynb
+### Notable files
 
-Generates the synthetic automotive engineering dataset used by TraceGuard.
-
-### `02-basic-rag.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/02-basic-rag.ipynb
-
-Contains the original Hybrid RAG and traceability-aware impact analysis pipeline (Version 1).
-
-The notebook is intentionally retained so that the complete pipeline can be executed step-by-step for:
-
-- Learning
-- Experimentation
-- Debugging
-- Retrieval inspection
-- Historical comparison against Version 2
-
-### `03-vector-search.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/03-vector-search.ipynb
-
-Module 3 vector-search experimentation notebook. Evaluates lexical, brute-force semantic, and RRF-fused hybrid retrieval against a dedicated evaluation ground truth using Recall@K and Precision@K, per artifact type. The validated Hybrid RRF result from this notebook is what Version 2 carries into `traceguard_v2.py`.
-
-### `src/traceguard_v1.py` - https://github.com/Sivashankari99/traceguard-ai/blob/main/src/traceguard_v1.py
-
-The original reusable TraceGuard implementation: independent lexical/semantic evidence tracking merged by best-available score, plus traceability, LLM assessment, and validation.
-
-### `src/traceguard_v2.py` - https://github.com/Sivashankari99/traceguard-ai/blob/main/src/traceguard_v2.py
-
-The current reusable TraceGuard implementation. Retrieval is replaced with the validated Hybrid RRF pipeline (lexical + semantic full-population ranking, fused by RRF, Top-K selected after fusion) and retrieval diagnostics are added. Traceability expansion, LLM prompting, grounding validation, and baseline determination are unchanged from Version 1.
-
-### `02-traceguard-simple-runner.ipynb` - https://github.com/Sivashankari99/traceguard-ai/blob/main/notebooks/02-traceguard-simple-runner.ipynb
-
-Provides a simplified interface for running TraceGuard.
-
-Instead of executing the complete implementation notebook cell-by-cell, a user can initialize TraceGuard, enter a proposed engineering change, and execute the analysis.
+- **`01-data-generation.ipynb`** — generates the synthetic dataset, including the corrected relationship-generation logic (see *Traceability Model*).
+- **`02-traceguard-simple-runner.ipynb`** — minimal interface: initialize once, run a query through the full request pipeline, see results.
+- **`04-planner-evaluation-runner.ipynb`** — 20 real queries testing the routing pipeline end to end, including deliberately keyword-free phrasings designed to reach the Planner, and deliberately irrelevant queries testing the `not_engineering` decision.
 
 ---
+
+<a id="example-usage"></a>
 
 ## 🧪 Example Usage
 
-A proposed engineering change can be submitted to TraceGuard using:
-
 ```python
-from src.traceguard_v2 import TraceGuard
+query = "Change braking system axle brake requirements and functionality."
 
-traceguard = TraceGuard(data_path="data")
+result = orch.run(query)
 
-query = """
-Change braking system axle brake requirements and functionality.
-""".strip()
+print(result.workflow, result.confidence, result.success)
 
-result = traceguard.analyze(query)
-
-display(result["impact_report_df"])
-
-print("\nOverall assessment:")
-print(result["overall_assessment"])
-
-print("\nRetrieval diagnostics:")
-print(result["retrieval_diagnostics"])
+if "impact_report_df" in result.final_response:
+    display(result.final_response["impact_report_df"])
+    print(result.final_response["overall_assessment"])
+    print(result.final_response["evidence_fusion"]["status"])
 ```
 
-TraceGuard then performs:
-
-```text
-Lexical Retrieval
-        +
-Semantic Retrieval
-        ↓
-Reciprocal Rank Fusion
-        ↓
-Top-K Candidate Selection
-        ↓
-Traceability Discovery
-        ↓
-Candidate Ranking
-        ↓
-LLM Relevance Check
-        ↓
-Impact Assessment
-        ↓
-Grounding Validation
-        ↓
-Release/Baseline Analysis
-```
-
-before returning the structured result.
+Every request — regardless of whether it's a known-ID lookup, a free-text impact analysis, or something no fixed workflow anticipated — goes through the same single `orch.run(query)` call.
 
 ---
+
+<a id="dataset"></a>
 
 ## 📊 Dataset
 
-This project uses **entirely synthetic automotive engineering data** created specifically for educational, experimentation, and portfolio purposes.
-
-The dataset represents engineering lifecycle artifacts and relationships needed to experiment with RAG-based engineering impact analysis.
-
-No proprietary, confidential, employer-specific, customer-specific, or real-world organizational engineering data is used in this project.
+This project uses **entirely synthetic automotive engineering data**, created specifically for educational, experimentation, and portfolio purposes. No proprietary, confidential, employer-specific, customer-specific, or real-world organizational engineering data is used in this project.
 
 ---
+
+<a id="evaluation"></a>
 
 ## 📏 Evaluation
 
-An evaluation dataset containing known incoming changes and expected affected-artifact mappings is maintained separately from the primary retrieval dataset.
+`04-planner-evaluation-runner.ipynb` runs 20 real queries against the live routing pipeline — a mix of known-workflow controls, deliberately keyword-free phrasings designed to test semantic fallback and the Planner, and deliberately irrelevant queries testing the `not_engineering` decision. Results are compared against a stated hypothesis per query, with a human-reviewed judgment on plan quality rather than a fully automated pass/fail (whether a composed plan is the *right* plan is a judgment call an automated check can't fully make).
 
-This dataset was used in `03-vector-search.ipynb` to compare lexical, brute-force semantic, and RRF-fused hybrid retrieval strategies using:
-
-- Retrieval Recall
-- Precision
-- Recall@K
-- Precision@K
-- Candidate-pool recall/precision (runtime-like, per-type Top-K unioned)
-- Retrieval behavior by artifact type
-
-The Hybrid RRF strategy carried into `traceguard_v2.py` was selected from these measured results rather than assumed in advance.
-
-Future evaluation work will extend this to embedding-model comparisons and similarity-threshold tuning.
+Future evaluation work will explore Recall@K, Precision@K, candidate coverage by artifact type, and semantic similarity distributions across a larger query set.
 
 ---
 
-## 🕘 Version History
-
-**Version 1**
-- Initial Hybrid RAG implementation
-- Independent lexical and semantic retrieval
-- Traceability-aware expansion
-- LLM-assisted impact assessment
-
-**Version 2 (Current)**
-- Reciprocal Rank Fusion (RRF)
-- Top-K selection after fusion
-- Retrieval diagnostics
-- Improved retrieval architecture
-- Preserved traceability and grounding validation
-
----
+<a id="current-status"></a>
 
 ## 🚧 Current Status
 
-**Work in Progress — Version 2**
-
-The current milestone implements:
-
-### Hybrid RRF-Fused Retrieval + Traceability-Aware Engineering Change Impact Analysis Pipeline
-
-Implemented capabilities include:
-
 ```text
-✓ Synthetic engineering knowledge base
-✓ Lexical retrieval (full population ranking)
-✓ Semantic retrieval (full population ranking, MiniLM)
-✓ Reciprocal Rank Fusion (RRF) of lexical + semantic rankings
-✓ Top-K candidate selection performed after fusion
-✓ Artifact-type-aware candidate retrieval
-✓ Retrieval diagnostics per stage
-✓ Traceability-aware discovery
-✓ Candidate ranking (fused rank + traceability bonus)
-✓ LLM-assisted impact assessment
-✓ Input relevance classification
+✓ Synthetic engineering knowledge base (corrected relationship model)
+✓ Lexical + semantic hybrid retrieval (RRF fusion)
+✓ Typed, direction-aware traceability expansion
+✓ Rank-based traceability seeding
+✓ 5 fixed workflows, including a genuinely zero-LLM baseline check
+✓ Dual baseline/release determination (LLM + traceability-only) with evidence fusion
+✓ Semantic fallback routing, calibrated against real query data
+✓ Agent Planner: composes novel tool sequences for unanticipated requests
+✓ Three-way Planner decision (plan / clarification / not_engineering)
+✓ Mechanical plan validation (unknown tools, length, duplicate steps)
 ✓ Grounding validation
-✓ Release/baseline determination
-✓ Reusable Python implementation (v1 retained, v2 current)
-✓ Simplified notebook runner
+✓ Planner evaluation notebook (20 real queries, human-reviewed)
 ```
 
 ---
 
-## 🛣️ Planned Development
+<a id="known-limitations"></a>
 
-TraceGuard will continue to evolve alongside further AI Engineering concepts.
+## ⚠️ Known Limitations
 
-Planned areas include:
+Documented honestly rather than hidden, consistent with this project's design principle below:
 
-- **AI Orchestration** — coordinating retrieval, traceability expansion, and LLM assessment as explicit, observable pipeline stages rather than a single monolithic call.
-- **Retrieval Evaluation module** — formalizing the Recall@K / Precision@K comparisons from `03-vector-search.ipynb` into a repeatable evaluation harness, run against every retrieval change.
-- Top-K optimization by artifact type, informed by retrieval diagnostics.
-- Similarity-threshold experimentation.
-- Precision and recall analysis across embedding models.
-- Richer artifact information in final impact reports.
-- Improved traceability explanations.
-- Retrieval and LLM monitoring.
-- Token and cost monitoring.
-- Interactive user interface.
-- Additional configuration management and compliance use cases.
-
-The objective is to evolve the project incrementally while keeping each stage understandable, testable, and explainable.
+- **Semantic fallback rarely fires in practice.** Its confidence threshold was calibrated against real data to 0.90, after finding that genuinely relevant queries only ever scored 0.31–0.37 against workflow exemplars. At 0.90, semantic fallback mostly defers to the Agent Planner rather than actively routing — an intentional tradeoff (the Planner reasons more reliably), but it means this layer is closer to dormant than active today.
+- **The Planner's relevance check is not perfect.** Most irrelevant queries (e.g. greetings) are correctly declined with `not_engineering` at essentially no cost, but some plausible-sounding-but-irrelevant phrasings (e.g. a calendar/meeting question) can still slip through and trigger a full, paid LLM-based impact analysis. This is an accepted, monitored limitation, not a solved problem — treat any public-facing deployment's cost exposure accordingly.
+- **Exemplar/workflow boundaries are still somewhat fuzzy** for near-identical traceability-flavored phrasings — two very similarly-worded requests can occasionally land on different (both individually reasonable) workflows.
+- **Retrieval evaluation (Recall@K, Precision@K, etc.) is not yet implemented**, per the *Evaluation* section above.
 
 ---
+
+<a id="planned-development"></a>
+
+## 🛣️ Planned Development
+
+- Retrieval evaluation and calibration (Recall@K, Precision@K, candidate coverage)
+- Tightening the Planner's relevance check against the residual gap noted above
+- Public-facing deployment (Streamlit), with usage/cost monitoring and a rupee-budget-based demo limiter calibrated against real token usage rather than an arbitrary query cap
+- Richer artifact information in final impact reports
+- Plan Memory: reusing previously-composed plans for semantically similar goals, with a structural fit-check before reuse (deferred pending further design work, not yet built)
+
+---
+
+<a id="design-principle"></a>
 
 ## 💡 Design Principle
 
-TraceGuard is intentionally designed around the principle that:
-
 > **AI should assist engineering judgment, not replace it.**
 
-Retrieval identifies potentially relevant evidence.
-
-Traceability provides engineering relationship context.
-
-The LLM helps interpret that evidence.
-
-The final decision remains with the engineer.
+Retrieval identifies potentially relevant evidence. Traceability provides engineering relationship context, verified against real data rather than assumed. The LLM helps interpret that evidence, and — through the Agent Planner — helps route requests that don't fit a fixed pattern. The final decision remains with the engineer, and every known limitation above is documented rather than glossed over, for the same reason.
 
 ---
 
+<a id="disclaimer"></a>
+
 ## ⚠️ Disclaimer
 
-TraceGuard AI is an **educational and portfolio project**.
-
-AI-generated impact assessments are intended to support human engineering analysis and experimentation with AI-assisted engineering workflows.
-
-Outputs should **not** be considered authoritative engineering, safety, configuration management, release, quality, or compliance decisions.
-
-All results require appropriate human engineering review.
+TraceGuard AI is an **educational and portfolio project**. AI-generated impact assessments are intended to support human engineering analysis and experimentation with AI-assisted engineering workflows. Outputs should **not** be considered authoritative engineering, safety, configuration management, release, quality, or compliance decisions. All results require appropriate human engineering review.

@@ -51,7 +51,22 @@ CONFIDENCE_THRESHOLD = 0.65
 # up", "can I join class in July", "what's the weather") topped out at
 # 0.13-0.19. 0.25 sits in that gap, closer to the irrelevant side to
 # stay conservative. Re-verify if WORKFLOW_EXEMPLARS changes again.
-SEMANTIC_CONFIDENCE_THRESHOLD = 0.25
+# Raised from 0.25 to 0.90 per real evaluation results: queries like
+# "Can you walk me through everything about CR-00319 in detail" were
+# semantically matching direct_lookup at ~0.38 confidence and getting a
+# bare-metadata answer, when the Planner would have composed a richer
+# lookup -> trace plan for the same request. HONEST CONSEQUENCE: real
+# calibration data (see SEMANTIC_CONFIDENCE_THRESHOLD's original 0.25
+# comment) showed genuinely relevant queries only ever scored 0.31-0.37
+# against these exemplars -- meaning at 0.90, semantic fallback will
+# essentially NEVER fire in practice, and almost everything that misses
+# lexical routing will now go to the Planner instead. This is the
+# intended effect, not an oversight: with the Planner now able to
+# correctly reject non-engineering input (see planner.py's "plan" /
+# "clarification" / "not_engineering" status), it's safe to make it the
+# primary handler for ambiguous cases instead of a rarely-reached
+# fallback behind semantic matching.
+SEMANTIC_CONFIDENCE_THRESHOLD = 0.90
 
 WORKFLOW_EXEMPLARS = {
     # CORRECTED: earlier exemplars were generic, content-free placeholder
