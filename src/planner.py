@@ -92,7 +92,9 @@ AVAILABLE TOOLS (use ONLY these, by exact name):
 Build the SHORTEST ordered sequence of tools that answers the goal.
 
 Rules:
-0. First decide whether this query can be answered by these tools at all:
+0. Decide whether this question can be answered using the engineering artifacts 
+contained in the repository. If it requires general engineering knowledge rather than 
+repository evidence, return no plan.
    - If the query is NOT a genuine engineering request about a Change
      Request, Problem Report, Requirement, Specification, Test Case,
      Task, or Release -- e.g. small talk, greetings, or anything

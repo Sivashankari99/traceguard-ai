@@ -75,6 +75,7 @@ class TraceGuard:
         max_traceability_hops=4,
         llm_model="gpt-4o-mini",
         rrf_k=None,
+        progress_callback=None,
     ):
         if data_path is None:
             # Works when src/ is directly under the repository root.
@@ -82,6 +83,8 @@ class TraceGuard:
         self.data_path = Path(data_path)
         self.model_name = model_name
         self.llm_model = llm_model
+        self.last_token_usage = None  
+        self.llm_call_log = []        
         self.llm_context_limit = llm_context_limit
         self.unlinked_context_fraction = unlinked_context_fraction
         self.max_traceability_hops = max_traceability_hops
@@ -91,9 +94,7 @@ class TraceGuard:
         }
         self.rrf_k = int(rrf_k) if rrf_k is not None else self.DEFAULT_RRF_K
 
-        # Seed selection: which retrieved CR/PR candidates are worth
-        # expanding traceability from at all.
-     
+        
         self.traceability_seed_mode = "rank"
         self.traceability_seed_max_rank = {
             "Change Request": 20,
@@ -104,14 +105,40 @@ class TraceGuard:
             "Problem Report": None,
         }
 
+    
+        self._progress_callback = progress_callback
+
+        self._report_progress("data", done=False)
         self._load_and_prepare_data()
+        self._report_progress("data", done=True)
+
+        self._report_progress("lexical", done=False)
         self._build_lexical_indexes()
+        self._report_progress("lexical", done=True)
+
+        self._report_progress("embeddings", done=False)
         self._build_embeddings()
+        self._report_progress("embeddings", done=True)
+
+        self._report_progress("graph", done=False)
         self._build_traceability_graph()
+        self._report_progress("graph", done=True)
 
-   
-    # Unchanged from V1: data loading, index construction, traceability graph construction.
+    def _report_progress(self, step_key, done):
+        """Notify an optional external callback of init progress.
 
+        step_key is one of: "data", "lexical", "embeddings", "graph".
+        Swallows callback errors so a UI-side bug never breaks engine
+        construction itself.
+        """
+        if self._progress_callback is None:
+            return
+        try:
+            self._progress_callback(step_key, done)
+        except Exception:
+            pass
+
+    
 
     def _load_and_prepare_data(self):
         self.artifacts_df = pd.read_csv(self.data_path / "artifacts.csv")
@@ -208,12 +235,7 @@ class TraceGuard:
             for dst in self._parse_link_ids(row.get("Validates", "")):
                 add_edge(src, dst, "Validates")
 
-    # Version 2 improvement:
-    # V2 retrieval layer: lexical (MinSearch) + semantic (MiniLM cosine),
-    # each ranked over the FULL per-type population, fused with real RRF.
-    # Top-K is taken only after fusion. The query is embedded once per
-    # analyze() call and passed in, rather than re-encoded per type.
-
+  
 
     def _lexical_full_ranking(self, query_text, artifact_type):
         """Full per-type lexical ranking via MinSearch, unchanged from V1."""
@@ -320,12 +342,15 @@ class TraceGuard:
             "lexical_population": len(lexical_ids),
             "semantic_population": len(semantic_ids),
             "hybrid_retained": len(rows),
+     
             "full_semantic_similarity": (
                 dict(zip(semantic_df["ID"].astype(str), semantic_df["semantic_similarity"]))
                 if not semantic_df.empty else {}
             ),
         }
         return rows, diagnostics
+
+   
 
     def _is_traceability_seed(self, row):
         artifact_type = row.get("Type")
@@ -647,6 +672,24 @@ Return this exact top-level structure:
         client = OpenAI()
         response = client.responses.create(model=self.llm_model, input=prompt)
         raw_output = response.output_text.strip()
+
+        # Captured as a side effect on the instance, NOT part of the return
+        # value -- keeps this fully backward-compatible with every existing
+        # caller (assess_impact, Planner.create_plan), which expect
+        # _call_llm(prompt) to return the parsed JSON dict directly.
+        # Attribute names checked defensively since the Responses API's
+        # usage object shape isn't guaranteed identical across SDK versions.
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self.last_token_usage = {
+                "input_tokens": getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None),
+                "output_tokens": getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None),
+                "total_tokens": getattr(usage, "total_tokens", None),
+            }
+        else:
+            self.last_token_usage = None
+        self.llm_call_log.append(self.last_token_usage)
+
         try:
             return json.loads(raw_output)
         except json.JSONDecodeError as exc:
