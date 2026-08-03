@@ -36,50 +36,10 @@ IMPACT_KEYWORDS = {
 CONFIDENCE_THRESHOLD = 0.65
 
 # --- Semantic fallback (used only when lexical keyword matching misses) ---
-#
-# These exemplar phrases are embedded once and compared against the query
-# via cosine similarity — the same MiniLM model already used for artifact
-# retrieval, no separate model or API call needed.
-#
-# IMPORTANT: cosine similarity and the hand-picked lexical confidence
-# scores above (0.90, 0.80, ...) are NOT the same scale. Do not assume
-# SEMANTIC_CONFIDENCE_THRESHOLD == CONFIDENCE_THRESHOLD is correct out of
-# the box — calibrate this against real queries once MiniLM is loaded.
-# Calibrated against real data (not a guess like the original 0.55):
-# relevant-but-unmatched queries scored 0.31 and 0.37 against the
-# corrected exemplars; genuinely irrelevant control queries ("hey what's
-# up", "can I join class in July", "what's the weather") topped out at
-# 0.13-0.19. 0.25 sits in that gap, closer to the irrelevant side to
-# stay conservative. Re-verify if WORKFLOW_EXEMPLARS changes again.
-# Raised from 0.25 to 0.90 per real evaluation results: queries like
-# "Can you walk me through everything about CR-00319 in detail" were
-# semantically matching direct_lookup at ~0.38 confidence and getting a
-# bare-metadata answer, when the Planner would have composed a richer
-# lookup -> trace plan for the same request. HONEST CONSEQUENCE: real
-# calibration data (see SEMANTIC_CONFIDENCE_THRESHOLD's original 0.25
-# comment) showed genuinely relevant queries only ever scored 0.31-0.37
-# against these exemplars -- meaning at 0.90, semantic fallback will
-# essentially NEVER fire in practice, and almost everything that misses
-# lexical routing will now go to the Planner instead. This is the
-# intended effect, not an oversight: with the Planner now able to
-# correctly reject non-engineering input (see planner.py's "plan" /
-# "clarification" / "not_engineering" status), it's safe to make it the
-# primary handler for ambiguous cases instead of a rarely-reached
-# fallback behind semantic matching.
 SEMANTIC_CONFIDENCE_THRESHOLD = 0.90
 
 WORKFLOW_EXEMPLARS = {
-    # CORRECTED: earlier exemplars were generic, content-free placeholder
-    # phrases ("What is this artifact", "Impact of modifying this
-    # component"). Verified against a real query, they clustered near
-    # zero similarity (-0.03 to 0.04) against ALL of them -- not because
-    # the embedding comparison was broken (confirmed working: unit-norm
-    # vectors, 0.78 similarity against a real domain sentence), but
-    # because the exemplars carried almost no distinguishing content to
-    # match against real engineering text. These are rewritten using
-    # real domain vocabulary (diagnostic, torque, compressor, ADAS, DC
-    # fast charging, damper control, etc.) adapted from actual CR/PR
-    # summaries in artifacts.csv, not invented from scratch.
+
     "direct_lookup": [
         "Can you help me understand this change request",
         "Show me the details of this problem report",

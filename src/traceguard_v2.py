@@ -93,19 +93,7 @@ class TraceGuard:
 
         # Seed selection: which retrieved CR/PR candidates are worth
         # expanding traceability from at all.
-        #
-        # Rank-based (hybrid_rank, the fused RRF signal), NOT a fixed
-        # similarity threshold. Verified against real queries: raw
-        # semantic_similarity's absolute magnitude varies widely by query
-        # phrasing alone (top-candidate similarity ranged 0.62-0.77
-        # across three real test queries, with no single threshold value
-        # working for all of them — 0.70 produced zero seeds for one
-        # query and ~6 for another). hybrid_rank, being the fused
-        # lexical+semantic RRF position, is scale-invariant and
-        # discriminates more reliably than similarity alone — in the
-        # same real data, a lower-similarity candidate sometimes ranked
-        # above a higher-similarity one because RRF also weighed lexical
-        # match, exactly as intended.
+     
         self.traceability_seed_mode = "rank"
         self.traceability_seed_max_rank = {
             "Change Request": 20,
@@ -121,10 +109,9 @@ class TraceGuard:
         self._build_embeddings()
         self._build_traceability_graph()
 
-    # ------------------------------------------------------------------
-    # Unchanged from V1: data loading, index construction, traceability
-    # graph construction.
-    # ------------------------------------------------------------------
+   
+    # Unchanged from V1: data loading, index construction, traceability graph construction.
+
 
     def _load_and_prepare_data(self):
         self.artifacts_df = pd.read_csv(self.data_path / "artifacts.csv")
@@ -221,16 +208,12 @@ class TraceGuard:
             for dst in self._parse_link_ids(row.get("Validates", "")):
                 add_edge(src, dst, "Validates")
 
-    # ------------------------------------------------------------------
     # Version 2 improvement:
-    # Retrieval now follows the validated Module 03 pipeline:
-    #   Lexical → Semantic → RRF → Top-K → Traceability
-    #
     # V2 retrieval layer: lexical (MinSearch) + semantic (MiniLM cosine),
     # each ranked over the FULL per-type population, fused with real RRF.
     # Top-K is taken only after fusion. The query is embedded once per
     # analyze() call and passed in, rather than re-encoded per type.
-    # ------------------------------------------------------------------
+
 
     def _lexical_full_ranking(self, query_text, artifact_type):
         """Full per-type lexical ranking via MinSearch, unchanged from V1."""
@@ -337,28 +320,12 @@ class TraceGuard:
             "lexical_population": len(lexical_ids),
             "semantic_population": len(semantic_ids),
             "hybrid_retained": len(rows),
-            # Preserves what _semantic_full_ranking already computed for
-            # EVERY artifact of this type, not just the ones that
-            # survived Top-K retention above. Cosine similarity here was
-            # never skipped for non-retained artifacts — it was computed
-            # and then discarded. Carrying it forward costs nothing (no
-            # new embedding calls), and lets downstream code (e.g.
-            # evidence_fusion's topical-relevance check) look up a real
-            # similarity score for artifacts outside the retained pool,
-            # such as a spawned-child CR/PR discovered only via
-            # traceability, never through retrieval directly.
             "full_semantic_similarity": (
                 dict(zip(semantic_df["ID"].astype(str), semantic_df["semantic_similarity"]))
                 if not semantic_df.empty else {}
             ),
         }
         return rows, diagnostics
-
-    # ------------------------------------------------------------------
-    # Unchanged from V1: traceability seed detection (now driven by the
-    # fused hybrid_rank instead of a raw semantic_rank) and multi-hop
-    # traceability expansion.
-    # ------------------------------------------------------------------
 
     def _is_traceability_seed(self, row):
         artifact_type = row.get("Type")

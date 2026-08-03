@@ -112,10 +112,8 @@ class Orchestrator:
             return context.get(steps[-1])
         return None
 
-    # ------------------------------------------------------------------
     # Execution
-    # ------------------------------------------------------------------
-
+    
     def run(self, query_text):
         start = time.perf_counter()
         decision = self.router.route(query_text)
@@ -128,13 +126,7 @@ class Orchestrator:
             plan_prompt = None
             plan_raw_response = None
         else:
-            # Low confidence on BOTH lexical and semantic signals. Rather
-            # than give up immediately, let the Planner attempt to
-            # compose a fresh sequence from the raw tools -- this is the
-            # fallback for a real request that just doesn't fit any of
-            # the 5 fixed workflows (e.g. "Can you help me understand
-            # CR-00123?", which is genuinely lookup -> trace, not any
-            # named workflow).
+
             goal = query_text  # the goal IS the query for now; no separate goal-inference step yet
             plan = self.planner.create_plan(goal, query_text, entity_id=decision.entity_id)
 
@@ -153,10 +145,7 @@ class Orchestrator:
                         "what you're asking about, or provide a specific artifact ID?"
                     )
                 else:
-                    # A genuinely broken/hallucinated plan (unknown tool, too
-                    # long, duplicate steps) -- distinct from the two cases
-                    # above, since here the Planner DID think it could help,
-                    # it just produced something unusable.
+
                     workflow_label = "clarification"
                     message = (
                         "I'm not confident enough to route that automatically, and "

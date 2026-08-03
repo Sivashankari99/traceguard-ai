@@ -10,15 +10,7 @@ IntentRouter — Layer 1 / Decision Layer.
                                                     ▼                             ▼
                                             Workflow Selection            Clarification
 
-Named IntentRouter (not just Router) because later stages of this project
-will likely add sibling routers with different jobs — e.g. a ToolRouter
-deciding which tool implementation to call, or a ModelRouter deciding
-which LLM/embedding model to use for a given request. Being explicit here
-keeps those distinct once they exist.
-
-Intent detection is now TWO signals, tried in order — mirroring the same
-lexical-then-semantic hybrid philosophy used for artifact retrieval, just
-applied one layer up at routing instead:
+Intent detection is now TWO signals
 
   1. LEXICAL (keyword rules, config/intents.py) — free, instant, tried
      first. If it clears CONFIDENCE_THRESHOLD, semantic is never invoked.
@@ -102,9 +94,7 @@ class IntentRouter:
         if any(k in text for k in IMPACT_KEYWORDS):
             return "full_impact_analysis", 0.70, "impact/change keyword"
 
-        # No lexical rule matched with confidence. This is NOT "assume
-        # full analysis" — it's genuine uncertainty, scored low so the
-        # caller knows to try semantic fallback (or clarify) instead.
+       
         return "full_impact_analysis", 0.30, "no lexical rule matched"
 
     def _get_exemplar_embeddings(self):
@@ -154,20 +144,6 @@ class IntentRouter:
         embedding_model was supplied. intent is a real workflow name only
         when the winning signal clears ITS OWN threshold; otherwise
         intent is 'clarification' and the caller should ask, not execute.
-
-        IMPORTANT: lexical_cleared/semantic_cleared are tracked as
-        separate booleans, NOT inferred from comparing a blended
-        confidence number against a single threshold. An earlier version
-        did `confidence = max(lexical_confidence, semantic_confidence)`
-        and then checked that blended value against
-        SEMANTIC_CONFIDENCE_THRESHOLD — which silently broke the moment
-        SEMANTIC_CONFIDENCE_THRESHOLD was calibrated below the lexical
-        fallback's hardcoded 0.30 "no rule matched" constant: max(0.30,
-        weak_semantic) always came out >= 0.30, so genuinely irrelevant
-        queries stopped reaching clarification even though neither
-        signal actually cleared its own bar. Comparing two
-        differently-scaled confidence numbers via max() is unsound
-        regardless of what either threshold is set to.
         """
         entity_id = self.extract_entity(query_text)
         intent, confidence, reason = self.detect_intent(query_text, entity_id)
