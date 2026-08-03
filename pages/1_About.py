@@ -124,7 +124,8 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#8a95a8; font-size:0.85em; padding: 10px 0;">
-        Built using <b>LLM Zoomcamp</b> · <b>OpenAI</b> · <b>Sentence Transformers</b> · <b>Streamlit</b>
+        Created as part of <b>LLM Zoomcamp</b> by <b>DataTalks.Club</b>.<br/>
+        Built using <b>OpenAI</b> · <b>Sentence Transformers</b> · <b>Streamlit</b>
     </div>
     """,
     unsafe_allow_html=True,

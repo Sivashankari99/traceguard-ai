@@ -114,9 +114,25 @@ class Orchestrator:
 
     # Execution
     
-    def run(self, query_text):
+    def run(self, query_text, step_callback=None):
+        """step_callback(key, done), if given, is invoked around each REAL
+        stage as it actually happens -- routing, an optional planner call,
+        then each tool in `steps`. A UI can use this to show live progress
+        exactly like TraceGuard's own init progress_callback: a stage only
+        ever gets a "done" notification because that stage genuinely ran.
+        A step_callback error is swallowed, never allowed to break a query."""
+        def notify(key, done):
+            if step_callback is None:
+                return
+            try:
+                step_callback(key, done)
+            except Exception:
+                pass
+
         start = time.perf_counter()
+        notify("route", False)
         decision = self.router.route(query_text)
+        notify("route", True)
 
         if decision.intent != "clarification":
             # Known workflow, high confidence -- fast path, unchanged.
@@ -128,7 +144,9 @@ class Orchestrator:
         else:
 
             goal = query_text  # the goal IS the query for now; no separate goal-inference step yet
+            notify("planner", False)
             plan = self.planner.create_plan(goal, query_text, entity_id=decision.entity_id)
+            notify("planner", True)
 
             if not plan.valid or not plan.steps:
                 if plan.status == "not_engineering":
@@ -179,7 +197,9 @@ class Orchestrator:
         context = {"query_text": query_text, "entity_id": decision.entity_id}
 
         for step in steps:
+            notify(step, False)
             result: ToolResult = self._call_tool(step, context)
+            notify(step, True)
             trace_log.append(result)
             if not result.ok:
                 return OrchestratorResult(
@@ -199,13 +219,17 @@ class Orchestrator:
                 )
             context[step] = result.data
 
+        notify("final", False)
+        final_response = self._build_final_response(steps, context)
+        notify("final", True)
+
         return OrchestratorResult(
             workflow=intent_label,
             entity_id=decision.entity_id,
             confidence=decision.confidence,
             reason=decision.reason,
             steps_run=[r.tool for r in trace_log],
-            final_response=self._build_final_response(steps, context),
+            final_response=final_response,
             success=True,
             tool_call_count=len(trace_log),
             execution_time_seconds=time.perf_counter() - start,

@@ -13,6 +13,11 @@ Design decisions, matching what was actually agreed before building this:
     Resets whenever the app restarts or a visitor opens a fresh session --
     NOT a global, cross-visitor count. Labeled "This Session" rather than
     "Today", since a session is not actually a calendar day.
+  - Feedback: a single shared CSV log (src/feedback_store.py) written to
+    by both the inline Helpful/Not Helpful buttons below and the
+    dedicated Feedback page. Streamlit Cloud's filesystem is ephemeral --
+    this is a rolling log meant to be periodically exported, not a
+    durable database. Documented honestly on the Feedback page itself.
 
 One honest design note on the "Query Type" selector: it does NOT force a
 specific workflow or bypass routing. It only changes the placeholder
@@ -22,9 +27,12 @@ the Agent Planner -- exactly as it would be from a notebook. Faking a
 forced-workflow selector would misrepresent what this system actually
 does; the whole point is that it decides routing, not the UI.
 
-The execution checklist below is derived from the REAL OrchestratorResult
-fields for each query, not a static list of checkmarks -- it only shows a
-stage as executed if the result actually shows that stage ran.
+The execution/workflow visualization below is derived from the REAL
+OrchestratorResult fields for each query, not a static list of
+checkmarks -- it only shows a stage as executed if the result actually
+shows that stage ran. Same principle for the Planner Reasoning expander:
+it only appears when a plan actually ran, and shows the Planner's real
+reasoning text, not decorative filler.
 """
 
 import os
@@ -62,6 +70,7 @@ if "OPENAI_API_KEY" not in os.environ:
 
 from src.traceguard_v2 import TraceGuard
 from src.orchestrator import Orchestrator
+from src.feedback_store import append_feedback
 
 # Real, current pricing (verified 2026) -- gpt-4o-mini, USD per token.
 # NOTE: OpenAI pricing changes over time; re-verify against
@@ -71,13 +80,83 @@ PRICE_PER_OUTPUT_TOKEN = 0.60 / 1_000_000
 
 QUERY_TYPE_PLACEHOLDERS = {
     "Change Request": "e.g. Enhance DC fast-charging current control for improved thermal margin.",
-    "Baseline Analysis": "e.g. Baseline impact of CR-00123",
-    "Traceability": "e.g. Show traceability for SPEC-00711",
-    "Similarity Search": "e.g. Any existing problem reports about battery thermal fallback behavior?",
-    "General Question": "e.g. Can you help me understand CR-00123?",
+    "Baseline Analysis": "e.g. Baseline impact of CR-00123 -- or ask about any release.",
+    "Traceability": "e.g. Show traceability for SPEC-00711, or trace REQ-00066.",
+    "Similarity Search": "e.g. Find similar problem reports about battery thermal fallback behavior.",
+    "General Question": "e.g. Can you help me understand CR-00123? or What requirements are related to battery charging?",
+}
+
+# All artifact IDs below are real IDs in the synthetic dataset -- these
+# aren't just illustrative text, clicking them returns real results.
+EXAMPLE_QUERIES = {
+    "Understand CR-00123": "Can you help me understand CR-00123?",
+    "Explain SPEC-00711": "Can you help me understand SPEC-00711?",
+    "Trace REQ-00066": "Show traceability for REQ-00066",
+    "Baseline impact of CR-00123": "Baseline impact of CR-00123",
+    "Explain braking requirements": "Explain braking requirements",
+    "Related to battery charging": "What requirements are related to battery charging?",
+    "Similar battery requirements": "Find similar existing requirements about battery charging behavior",
+    "Similar problem reports": "Find similar existing problem reports about battery thermal fallback behavior",
+}
+
+# tool name -> human label, used by the workflow visualization further down.
+_STEP_LABELS = {
+    "lookup": "Looked up the artifact",
+    "retrieve": "Retrieved similar artifacts",
+    "trace": "Expanded traceability",
+    "assess_impact": "Assessed impact (LLM)",
+    "validate": "Validated grounding",
+    "determine_baseline": "Determined baseline (LLM)",
+    "baseline_evidence": "Checked baseline evidence (traceability)",
+    "evidence_fusion": "Compared evidence signals",
+    "full_impact_analysis": "Ran full impact analysis",
+}
+
+_WORKFLOW_TITLES = {
+    "direct_lookup": "Artifact Lookup",
+    "similarity_check": "Similarity Search",
+    "traceability_trace": "Traceability Trace",
+    "baseline_check": "Baseline Check (traceability-only)",
+    "full_impact_analysis": "Full Impact Analysis",
+    "clarification": "Needs Clarification",
+    "rejected:not_engineering": "Outside Engineering Domain",
+}
+
+# tool/stage name -> label shown on the LIVE per-query progress status
+# (item 7). Built from the same real orchestrator.run() callback that
+# drives steps_run -- a stage only ever appears because it genuinely ran.
+_QUERY_STAGE_LABELS = {
+    "route": "🔍 Understanding your question",
+    "planner": "🧭 Composing a plan (Agent Planner)",
+    "lookup": "📄 Looking up the artifact",
+    "retrieve": "📄 Searching engineering artifacts",
+    "trace": "🔗 Expanding traceability",
+    "assess_impact": "🤖 Assessing impact (LLM)",
+    "validate": "🤖 Validating grounding",
+    "determine_baseline": "🤖 Determining baseline (LLM)",
+    "baseline_evidence": "🔗 Checking baseline evidence",
+    "evidence_fusion": "⚖️ Comparing evidence signals",
+    "full_impact_analysis": "🤖 Running full impact analysis",
+    "final": "🤖 Generating grounded response",
 }
 
 
+# ----------------------------------------------------------------------
+# Engine + Orchestrator -- built exactly once per app instance, shared
+# across every visitor. Safe because nothing per-request mutates it;
+# retrieval/traceability only ever READ the cached embeddings/indexes.
+#
+# The loading screen below reflects REAL init progress -- each line
+# flips from pending to done only when TraceGuard's own __init__
+# actually finishes that step (via progress_callback). Because this is
+# wrapped in @st.cache_resource, the function body (including every
+# st.status/st.empty call inside it) only ever runs ONCE across the
+# entire app process -- every rerun after that, and every other
+# visitor's session, skips straight to the cached (orchestrator, engine)
+# tuple with nothing re-rendered here at all. That's what makes this
+# loading screen disappear completely after the first load, rather than
+# needing separate logic to hide it.
+# ----------------------------------------------------------------------
 _INIT_STEPS = [
     ("data", "Loading synthetic engineering artifacts"),
     ("lexical", "Building lexical search index"),
@@ -125,7 +204,7 @@ def load_orchestrator():
             "**Why does startup take time?** TraceGuard builds semantic search "
             "indexes and loads AI models into memory. This happens once when "
             "the application starts, and the result is cached (`@st.cache_resource`) "
-            "so it is reused across reruns in this session instead of being "
+            "so it is reused across reruns and across visitors instead of being "
             "rebuilt every time the script reruns."
         )
 
@@ -147,11 +226,34 @@ def _run_query(query_text):
     """Runs one query, measuring real per-request cost by diffing the
     engine's llm_call_log before/after -- correctly captures queries that
     trigger MORE than one LLM call (e.g. the Planner's own decision, then
-    full_impact_analysis's internal call if the composed plan includes it)."""
+    full_impact_analysis's internal call if the composed plan includes it).
+
+    The status box below shows REAL stage-by-stage progress via
+    Orchestrator.run()'s step_callback -- a stage only ever appears
+    because it genuinely ran, same principle as the init loading screen
+    and the workflow visualization further down."""
     calls_before = len(engine.llm_call_log)
     start = time.perf_counter()
-    result = orch.run(query_text)
+
+    status = st.status("Running your query...", expanded=True)
+    rows = {}
+    with status:
+        def on_stage(key, done):
+            label = _QUERY_STAGE_LABELS.get(key, key.replace("_", " ").title())
+            if key not in rows:
+                rows[key] = st.empty()
+            rows[key].markdown(f"{'✅' if done else '🔄'} {label}{'' if done else '...'}")
+
+        result = orch.run(query_text, step_callback=on_stage)
+
     wall_time = time.perf_counter() - start
+
+    if result.success:
+        status.update(label="✅ Analysis complete", state="complete", expanded=False)
+    elif result.workflow in ("clarification", "rejected:not_engineering"):
+        status.update(label="ℹ️ Query answered", state="complete", expanded=False)
+    else:
+        status.update(label="⚠️ A step failed", state="error", expanded=False)
 
     calls_during = [c for c in engine.llm_call_log[calls_before:] if c is not None]
     total_input_tokens = sum(c.get("input_tokens") or 0 for c in calls_during)
@@ -161,7 +263,10 @@ def _run_query(query_text):
         + total_output_tokens * PRICE_PER_OUTPUT_TOKEN
     )
 
- 
+    # A genuine failure (a tool actually errored) is different from a
+    # correct, by-design decline (clarification / not_engineering) --
+    # counting the latter as an "error" in the sidebar would be
+    # misleading, since the system behaved exactly as intended there.
     is_real_error = (not result.success) and result.workflow not in (
         "clarification", "rejected:not_engineering"
     )
@@ -170,6 +275,7 @@ def _run_query(query_text):
         "timestamp": datetime.now(),
         "query": query_text,
         "workflow": result.workflow,
+        "entity_id": result.entity_id,
         "planner_used": result.plan_prompt is not None,
         "wall_time_s": wall_time,
         "llm_calls": len(calls_during),
@@ -178,6 +284,240 @@ def _run_query(query_text):
     })
 
     return result
+
+
+# ----------------------------------------------------------------------
+# Result-rendering helpers -- every one of these reads directly from the
+# real OrchestratorResult / engine output for THIS query. Nothing here
+# is a static decoration; a section simply doesn't render if the
+# underlying data isn't present.
+# ----------------------------------------------------------------------
+
+def _executive_summary_line(result):
+    response = result.final_response
+    if not result.success:
+        if result.workflow == "rejected:not_engineering":
+            return "🚫 **Declined** -- this wasn't recognized as an engineering-artifact question."
+        if result.workflow == "clarification":
+            return "❓ **Needs clarification** before TraceGuard can proceed."
+        return "⚠️ **A step in the pipeline failed.**"
+
+    if isinstance(response, dict) and "impact_report_df" in response:
+        n = len(response["impact_report_df"])
+        ef = response.get("evidence_fusion")
+        if ef:
+            n_releases = (
+                len(ef.get("agreement_release_ids", []))
+                + len(ef.get("llm_only_release_ids", []))
+                + len(ef.get("evidence_only_release_ids", []))
+            )
+            return (
+                f"✅ **Full impact analysis complete** -- {n} artifact(s) assessed, "
+                f"{n_releases} release(s) flagged for review."
+            )
+        return f"✅ **Full impact analysis complete** -- {n} artifact(s) assessed."
+
+    if isinstance(response, dict) and "baseline_determination" in response:
+        status = (response["baseline_determination"] or {}).get("status", "Unknown")
+        return f"✅ **Baseline check complete** -- status: {status}."
+
+    if isinstance(response, dict) and "discoveries" in response and "discovered_count" in response:
+        return f"✅ **Traceability trace complete** -- {response['discovered_count']} linked artifact(s) found."
+
+    if isinstance(response, dict) and "results_by_type" in response:
+        total = sum(len(v) for v in response["results_by_type"].values())
+        return f"✅ **Similarity search complete** -- {total} candidate artifact(s) found."
+
+    if isinstance(response, dict) and "ID" in response and "Summary" in response:
+        return f"✅ **Found {response['ID']}** ({response.get('Type', 'artifact')})."
+
+    return "✅ **Query completed.**"
+
+
+def _render_workflow_steps(result):
+    """The sequential, ChatGPT-style progress line (item 8) -- built
+    entirely from result.steps_run, never a fixed decorative list."""
+    lines = ["✅ Understood query"]
+    if result.workflow == "rejected:not_engineering":
+        lines.append("⛔ Declined -- outside engineering domain")
+    elif result.workflow == "clarification":
+        lines.append("❓ Needs clarification")
+    else:
+        for step in (result.steps_run or []):
+            lines.append(f"✅ {_STEP_LABELS.get(step, step)}")
+        lines.append("✅ Generated grounded answer" if result.success else "⛔ Step failed")
+    st.markdown("  →  ".join(lines))
+
+
+def _step_data_map(result):
+    """Rebuilds a {tool_name: data} lookup from the real trace_log --
+    this is the same information the orchestrator's internal `context`
+    dict held while running, so it works identically for every
+    workflow (including baseline_check, which runs `trace` internally
+    without surfacing it in final_response) and for planner-composed
+    plans alike."""
+    return {r.tool: r.data for r in (result.trace_log or []) if r.ok}
+
+
+def _retrieved_artifact_ids(result):
+    """Pulls the real set of retrieved/candidate artifact IDs out of
+    whichever tools actually ran for this query."""
+    step_data = _step_data_map(result)
+    if "full_impact_analysis" in step_data:
+        df = step_data["full_impact_analysis"].get("selected_candidates_df")
+        if df is not None and not df.empty and "ID" in df.columns:
+            return df["ID"].astype(str).tolist()
+    if "retrieve" in step_data:
+        ids = []
+        for rows in step_data["retrieve"].get("results_by_type", {}).values():
+            ids.extend(str(r.get("ID")) for r in rows if r.get("ID"))
+        return ids
+    return []
+
+
+def _traceability_discoveries(result):
+    """Pulls the real discoveries dict out of whichever tool produced
+    it (`trace` for the single-artifact workflows, `full_impact_analysis`
+    for the free-text pipeline), regardless of what final_response
+    ended up wrapping."""
+    step_data = _step_data_map(result)
+    if "trace" in step_data:
+        return step_data["trace"].get("discoveries", {})
+    if "full_impact_analysis" in step_data:
+        return step_data["full_impact_analysis"].get("discoveries", {})
+    return {}
+
+
+def _render_id_chips(ids, empty_message="None found."):
+    if not ids:
+        st.caption(empty_message)
+        return
+    shown, extra = ids[:30], max(0, len(ids) - 30)
+    st.markdown(" &nbsp; ".join(f"`{i}`" for i in shown), unsafe_allow_html=True)
+    if extra:
+        st.caption(f"+ {extra} more")
+
+
+def _render_answer_body(result):
+    """The main 'Answer' section -- dispatches on the real shape of
+    final_response, covering every workflow's actual output (including
+    a plain lookup record, which previously fell through to raw JSON)."""
+    response = result.final_response
+
+    if not result.success:
+        if result.workflow in ("clarification", "rejected:not_engineering"):
+            st.info(response)
+        else:
+            st.error(response)
+        return
+
+    if isinstance(response, dict) and "impact_report_df" in response:
+        st.dataframe(response["impact_report_df"], use_container_width=True)
+        st.markdown("**Overall assessment:**")
+        st.write(response.get("overall_assessment"))
+        if "evidence_fusion" in response:
+            ef = response["evidence_fusion"]
+            st.markdown(f"**Evidence fusion:** {ef['status']}")
+            ec1, ec2, ec3 = st.columns(3)
+            ec1.caption(f"Agreement: {ef['agreement_release_ids']}")
+            ec2.caption(f"LLM-only: {ef['llm_only_release_ids']}")
+            ec3.caption(f"Evidence-only: {ef['evidence_only_release_ids']}")
+
+    elif isinstance(response, dict) and "baseline_determination" in response:
+        st.markdown(f"**Baseline determination:** {response['baseline_determination']['status']}")
+        if response.get("affected_baselines_df") is not None:
+            st.dataframe(response["affected_baselines_df"], use_container_width=True)
+
+    elif isinstance(response, dict) and "discoveries" in response and "discovered_count" in response:
+        st.markdown(f"Discovered **{response['discovered_count']}** linked artifact(s). See *Traceability* below for details.")
+
+    elif isinstance(response, dict) and "results_by_type" in response:
+        for artifact_type, rows in response["results_by_type"].items():
+            if rows:
+                st.write(f"**{artifact_type}:** {len(rows)} candidate(s)")
+
+    elif isinstance(response, dict) and "ID" in response and "Summary" in response:
+        # A plain lookup() record -- now shown as a readable card instead
+        # of falling through to raw JSON.
+        st.markdown(f"### {response['ID']} -- {response.get('Type', '')}")
+        st.write(response.get("Summary", ""))
+        if response.get("Text"):
+            with st.expander("Full text"):
+                st.write(response["Text"])
+        meta_cols = st.columns(3)
+        meta_cols[0].caption(f"**State:** {response.get('State', '-')}")
+        meta_cols[1].caption(f"**Project:** {response.get('Project', '-')}")
+        meta_cols[2].caption(f"**Document ID:** {response.get('Document_ID', '-')}")
+
+    else:
+        st.json(response)
+
+
+def _render_traceability(discoveries):
+    if not discoveries:
+        st.caption("No linked artifacts were discovered for this query.")
+        return
+    for artifact_id, paths in list(discoveries.items())[:30]:
+        hops = min((p.get("distance", 0) for p in paths), default=None)
+        relationships = sorted({e["relationship"] for p in paths for e in p.get("edges", [])})
+        rel_text = ", ".join(relationships) if relationships else "linked"
+        hop_text = f"{hops} hop(s)" if hops is not None else ""
+        st.write(f"- `{artifact_id}` -- {rel_text} ({hop_text})")
+    if len(discoveries) > 30:
+        st.caption(f"+ {len(discoveries) - 30} more linked artifact(s)")
+
+
+def _render_planner_reasoning(result):
+    if result.plan_prompt is None:
+        return  # no planner run for this query -- nothing to show
+    with st.expander("🧠 Planner Reasoning -- why was this workflow selected?", expanded=False):
+        st.markdown(result.plan_reasoning or "_No reasoning text was returned._")
+        st.caption(
+            "Planner-composed steps: "
+            + (" → ".join(result.steps_run) if result.steps_run else "(none)")
+        )
+        with st.expander("Show raw planner debug info (prompt + raw LLM response)"):
+            st.markdown("**Prompt sent to the LLM:**")
+            st.code(result.plan_prompt or "", language="text")
+            st.markdown("**Raw parsed LLM response:**")
+            st.json(result.plan_raw_response or {})
+
+
+def _suggested_followups(result, current_query):
+    """Contextual follow-up chips (item 12) -- built from the real
+    entity_id this query resolved to, not a fixed generic list."""
+    suggestions = []
+    eid = result.entity_id
+    if eid:
+        suggestions.append((f"🔗 Trace {eid}", f"Show traceability for {eid}"))
+        suggestions.append((f"📋 Baseline impact of {eid}", f"Baseline impact of {eid}"))
+        suggestions.append((f"💬 Explain {eid}", f"Can you help me understand {eid}?"))
+    suggestions.append(("🔍 Similar problem reports", "Find similar existing problem reports about battery thermal fallback behavior"))
+    suggestions.append(("📐 Related requirements", "What requirements are related to battery charging?"))
+
+    seen, final = set(), []
+    for label, text in suggestions:
+        if text == current_query or text in seen:
+            continue
+        seen.add(text)
+        final.append((label, text))
+    return final[:4]
+
+
+def _section_card(icon, title, accent_color):
+    """A colored, icon-labeled header + bordered card body, used to
+    visually separate the result page into distinct sections (item 2)
+    instead of one long undifferentiated block of output. Returns the
+    container to render section content inside."""
+    st.markdown(
+        f"""
+        <div style="border-left: 4px solid {accent_color}; padding: 2px 0 2px 12px; margin: 20px 0 6px 0;">
+            <span style="font-size:1.05em; font-weight:600;">{icon} {title}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    return st.container(border=True)
 
 
 # ----------------------------------------------------------------------
@@ -195,10 +535,53 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ----------------------------------------------------------------------
+# Hero -- one strong sentence up top (item 1), then real dataset stats
+# (item 4, computed from the actual loaded engine -- not hardcoded) and
+# a capability-first "can help you" framing (item 6) that people parse
+# faster than an architecture diagram.
+# ----------------------------------------------------------------------
+st.markdown(
+    "### Ask engineering questions in natural language, and TraceGuard AI "
+    "finds related artifacts, expands traceability, and explains the "
+    "engineering impact."
+)
+
+_artifact_count = len(engine.artifacts_df)
+_type_count = engine.artifacts_df["Type"].nunique()
+stat1, stat2, stat3 = st.columns(3)
+stat1.metric("Artifacts", f"{_artifact_count:,}")
+stat2.metric("Artifact Types", _type_count)
+stat3.metric("Approach", "Hybrid RAG + Traceability")
+
+st.markdown("#### TraceGuard AI can help you")
+st.markdown(
+    """
+- ✅ Understand a Change Request
+- ✅ Find similar Requirements
+- ✅ Explore Traceability
+- ✅ Estimate Baseline Impact
+"""
+)
+
+st.info(
+    "📘 **About this demo** -- This application is built on approximately "
+    "**5,000 synthetic engineering artifacts**, created for educational "
+    "purposes. It is fictional and **not connected to a live engineering "
+    "repository.**"
+)
+st.page_link("pages/2_Dataset_Explorer.py", label="📄 Browse the dataset →")
+
+if not st.session_state.history:
+    st.markdown(
+        "👋 **New here?** Start with one of the example questions below, "
+        "or browse the Dataset Explorer to see what TraceGuard already knows."
+    )
+
 main_col, sidebar_col = st.columns([3, 1])
 
 # ----------------------------------------------------------------------
-# Sidebar -- per-session monitoring only (see module docstring)
+# Sidebar -- per-session monitoring, query history, and page navigation
 # ----------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 📊 This Session")
@@ -228,10 +611,43 @@ with st.sidebar:
             "session. Not a global/cross-visitor count."
         )
 
+    st.markdown("---")
+    st.markdown("### 🕘 Recent Queries")
+    if not history:
+        st.caption("Your query history will appear here.")
+    else:
+        for h in reversed(history[-8:]):
+            title = _WORKFLOW_TITLES.get(h["workflow"], h["workflow"])
+            with st.expander(h["query"][:60] + ("..." if len(h["query"]) > 60 else "")):
+                st.caption(f"{h['timestamp'].strftime('%H:%M:%S')} · {title}")
+                if st.button("↺ Ask again", key=f"rerun_{h['timestamp'].isoformat()}"):
+                    st.session_state["query_input"] = h["query"]
+
+    st.markdown("---")
+    st.markdown("### 🔗 More")
+    st.page_link("pages/2_Dataset_Explorer.py", label="📄 Dataset Explorer")
+    st.page_link("pages/1_About.py", label="🛡️ About & Architecture")
+    st.page_link("pages/3_Feedback.py", label="💬 Feedback")
+
 # ----------------------------------------------------------------------
 # Main panel
 # ----------------------------------------------------------------------
 with main_col:
+    st.markdown("#### 💬 What can I ask?")
+    with st.expander("See example questions", expanded=False):
+        st.markdown(
+            """
+- Understand CR-00123
+- Explain SPEC-00711
+- Trace REQ-00066
+- Find similar battery requirements
+- Show baseline impact of CR-00123
+- Explain braking requirements
+- What requirements are related to battery charging?
+- Find similar problem reports
+"""
+        )
+
     st.markdown("#### Choose Query Type")
     query_type = st.radio(
         "Query Type", list(QUERY_TYPE_PLACEHOLDERS.keys()),
@@ -243,20 +659,17 @@ with main_col:
     )
 
     st.markdown("#### Try an example")
-    EXAMPLE_QUERIES = {
-        "Understand CR-00123": "Can you help me understand CR-00123?",
-        "Trace SPEC-00711": "Show traceability for SPEC-00711",
-        "Baseline impact": "Baseline impact of CR-00741",
-        "Battery requirement": "Please look into incorrect fallback behavior for battery thermal protection",
-    }
-    ex_cols = st.columns(len(EXAMPLE_QUERIES))
-    for col, (label, example_text) in zip(ex_cols, EXAMPLE_QUERIES.items()):
-        if col.button(label, use_container_width=True):
-            st.session_state["query_input"] = example_text
+    ex_items = list(EXAMPLE_QUERIES.items())
+    for row_start in range(0, len(ex_items), 4):
+        row_items = ex_items[row_start:row_start + 4]
+        ex_cols = st.columns(len(row_items))
+        for col, (label, example_text) in zip(ex_cols, row_items):
+            if col.button(label, use_container_width=True, key=f"ex_{label}"):
+                st.session_state["query_input"] = example_text
 
-    st.markdown("#### Engineering Query")
+    st.markdown("#### Your Question")
     query_text = st.text_area(
-        "Engineering Query", height=100, label_visibility="collapsed",
+        "Your Question", height=100, label_visibility="collapsed",
         placeholder=QUERY_TYPE_PLACEHOLDERS[query_type],
         key="query_input",
     )
@@ -267,95 +680,97 @@ with main_col:
         if not query_text.strip():
             st.warning("Enter a query first.")
         else:
-            with st.spinner("Running..."):
-                result = _run_query(query_text.strip())
-
-            st.markdown("---")
-            st.markdown("#### Execution")
-
-            # Every checkmark below reflects what THIS query's real result
-            # actually shows happened -- not a static decoration.
-            planner_ran = result.plan_prompt is not None
-            traceability_ran = any(
-                s in (result.steps_run or []) for s in ("trace", "baseline_evidence", "full_impact_analysis")
-            )
-            fusion_ran = "evidence_fusion" in (result.steps_run or [])
-
-            checklist = [
-                ("Intent Router", True),
-                ("Planner", planner_ran),
-                ("Orchestrator", True),
-                ("Traceability", traceability_ran),
-                ("Evidence Fusion", fusion_ran),
-            ]
-            cols = st.columns(len(checklist))
-            for col, (label, ran) in zip(cols, checklist):
-                col.markdown(f"{'✅' if ran else '⬜'} {label}")
-
-            st.caption(f"Workflow: `{result.workflow}` · Confidence: {result.confidence:.2f} · Steps: {' → '.join(result.steps_run) if result.steps_run else '(none)'}")
-
-            st.markdown("#### Impact Assessment")
+            result = _run_query(query_text.strip())
 
             response = result.final_response
 
-            if not result.success:
-                # rejected:not_engineering, clarification, or a genuine
-                # tool failure -- final_response is already a plain,
-                # human-readable message in every one of these cases.
-                if result.workflow in ("clarification", "rejected:not_engineering"):
-                    st.info(response)
-                else:
-                    st.error(response)
+            # --- Executive Summary -----------------------------------
+            with _section_card("📋", "Executive Summary", "#3b82f6"):
+                st.markdown(_executive_summary_line(result))
+                _render_workflow_steps(result)
+                st.caption(
+                    f"Workflow: `{result.workflow}` · Confidence: {result.confidence:.2f} · "
+                    f"Steps: {' → '.join(result.steps_run) if result.steps_run else '(none)'}"
+                )
 
-            elif isinstance(response, dict) and "impact_report_df" in response:
-                st.dataframe(response["impact_report_df"], use_container_width=True)
-                st.markdown("**Overall assessment:**")
-                st.write(response.get("overall_assessment"))
-                if "evidence_fusion" in response:
-                    ef = response["evidence_fusion"]
-                    st.markdown(f"**Evidence fusion:** {ef['status']}")
-                    ec1, ec2, ec3 = st.columns(3)
-                    ec1.caption(f"Agreement: {ef['agreement_release_ids']}")
-                    ec2.caption(f"LLM-only: {ef['llm_only_release_ids']}")
-                    ec3.caption(f"Evidence-only: {ef['evidence_only_release_ids']}")
+            # --- Answer ------------------------------------------------
+            with _section_card("💬", "Answer", "#22c55e"):
+                _render_answer_body(result)
 
-            elif isinstance(response, dict) and "baseline_determination" in response:
-                st.markdown(f"**Baseline determination:** {response['baseline_determination']['status']}")
-                if response.get("affected_baselines_df") is not None:
-                    st.dataframe(response["affected_baselines_df"], use_container_width=True)
+            # --- Retrieved Artifacts ------------------------------------
+            retrieved_ids = _retrieved_artifact_ids(result)
+            if retrieved_ids:
+                with _section_card("📦", "Retrieved Artifacts", "#a855f7"):
+                    _render_id_chips(retrieved_ids)
 
-            elif isinstance(response, dict) and "discoveries" in response:
-                st.markdown(f"**Discovered {response['discovered_count']} linked artifact(s):**")
-                for artifact_id in response["discoveries"]:
-                    st.write(f"- {artifact_id}")
+            # --- Traceability -------------------------------------------
+            discoveries = _traceability_discoveries(result)
+            if discoveries:
+                with _section_card("🔗", "Traceability", "#f97316"):
+                    _render_traceability(discoveries)
 
-            elif isinstance(response, dict) and "results_by_type" in response:
-                for artifact_type, rows in response["results_by_type"].items():
-                    if rows:
-                        st.write(f"**{artifact_type}:** {len(rows)} candidate(s)")
+            # --- Planner Reasoning ---------------------------------------
+            if result.plan_prompt is not None:
+                with _section_card("🧠", "Planner Reasoning", "#14b8a6"):
+                    _render_planner_reasoning(result)
 
-            else:
-                st.json(response)
-
-            # Execution Summary -- surfaces exactly what was already
-            # computed in _run_query for THIS query (the entry it just
-            # appended), nothing recomputed or estimated separately.
+            # --- Metrics ---------------------------------------------------
             this_query = st.session_state.history[-1]
-            workflow_display = "agent planner" if this_query["workflow"].startswith("planner:") else this_query["workflow"]
+            workflow_display = _WORKFLOW_TITLES.get(
+                result.workflow,
+                "Agent Planner" if this_query["workflow"].startswith("planner:") else this_query["workflow"],
+            )
+            with _section_card("📊", "Metrics", "#64748b"):
+                sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                sc1.metric("Workflow", workflow_display)
+                sc2.metric("Planner", "Yes" if this_query["planner_used"] else "No")
+                sc3.metric("LLM Calls", this_query["llm_calls"])
+                sc4.metric("Execution Time", f"{this_query['wall_time_s']:.2f}s")
+                sc5.metric("Estimated Cost", f"${this_query['estimated_cost']:.4f}")
+
+            # --- Suggested follow-up queries --------------------------------
+            followups = _suggested_followups(result, query_text.strip())
+            if followups:
+                st.markdown("#### Suggested Follow-ups")
+                fc = st.columns(len(followups))
+                for col, (label, followup_text) in zip(fc, followups):
+                    if col.button(label, use_container_width=True, key=f"followup_{label}"):
+                        st.session_state["query_input"] = followup_text
+
+            # --- Helpful / Not Helpful ---------------------------------------
             st.markdown("---")
-            st.markdown("#### Execution Summary")
-            sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-            sc1.metric("Workflow", workflow_display)
-            sc2.metric("Planner", "Yes" if this_query["planner_used"] else "No")
-            sc3.metric("LLM Calls", this_query["llm_calls"])
-            sc4.metric("Execution Time", f"{this_query['wall_time_s']:.2f}s")
-            sc5.metric("Estimated Cost", f"${this_query['estimated_cost']:.4f}")
+            st.markdown("**Was this helpful?**")
+            fb_key = f"fb_{len(st.session_state.history)}"
+            hc1, hc2, hc3 = st.columns([1, 1, 4])
+            if hc1.button("👍 Helpful", key=f"{fb_key}_up"):
+                append_feedback(
+                    repo_root, source="main_page", type_="helpful",
+                    query=query_text.strip(), workflow=result.workflow,
+                )
+                st.success("Thanks for the feedback!")
+            if hc2.button("👎 Not Helpful", key=f"{fb_key}_down"):
+                st.session_state[f"{fb_key}_show_reason"] = True
+            if st.session_state.get(f"{fb_key}_show_reason"):
+                reason = st.selectbox(
+                    "What went wrong?",
+                    ["Wrong answer", "Didn't understand", "Missing data", "Slow", "Other"],
+                    key=f"{fb_key}_reason",
+                )
+                if st.button("Submit", key=f"{fb_key}_reason_submit"):
+                    append_feedback(
+                        repo_root, source="main_page", type_="not_helpful",
+                        query=query_text.strip(), workflow=result.workflow,
+                        rating_reason=reason,
+                    )
+                    st.success("Thanks -- this helps us improve TraceGuard.")
+                    st.session_state[f"{fb_key}_show_reason"] = False
 
 st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:#8a95a8; font-size:0.85em; padding: 10px 0;">
-        Built using <b>LLM Zoomcamp</b> · <b>OpenAI</b> · <b>Sentence Transformers</b> · <b>Streamlit</b>
+        Created as part of <b>LLM Zoomcamp</b> by <b>DataTalks.Club</b>.<br/>
+        Built using <b>OpenAI</b> · <b>Sentence Transformers</b> · <b>Streamlit</b>
     </div>
     """,
     unsafe_allow_html=True,
