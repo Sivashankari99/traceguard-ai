@@ -50,12 +50,7 @@ repo_root = Path(__file__).resolve().parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-# ----------------------------------------------------------------------
-# API key -- single shared secret. Set into the environment ONCE, before
-# the engine is constructed. Safe because every visitor shares the same
-# key (no per-request key, no race condition) -- this is exactly the
-# simplification that was chosen instead of the BYO-key design.
-# ----------------------------------------------------------------------
+
 if "OPENAI_API_KEY" not in os.environ:
     try:
         os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
@@ -141,22 +136,7 @@ _QUERY_STAGE_LABELS = {
 }
 
 
-# ----------------------------------------------------------------------
-# Engine + Orchestrator -- built exactly once per app instance, shared
-# across every visitor. Safe because nothing per-request mutates it;
-# retrieval/traceability only ever READ the cached embeddings/indexes.
-#
-# The loading screen below reflects REAL init progress -- each line
-# flips from pending to done only when TraceGuard's own __init__
-# actually finishes that step (via progress_callback). Because this is
-# wrapped in @st.cache_resource, the function body (including every
-# st.status/st.empty call inside it) only ever runs ONCE across the
-# entire app process -- every rerun after that, and every other
-# visitor's session, skips straight to the cached (orchestrator, engine)
-# tuple with nothing re-rendered here at all. That's what makes this
-# loading screen disappear completely after the first load, rather than
-# needing separate logic to hide it.
-# ----------------------------------------------------------------------
+
 _INIT_STEPS = [
     ("data", "Loading synthetic engineering artifacts"),
     ("lexical", "Building lexical search index"),
@@ -263,10 +243,7 @@ def _run_query(query_text):
         + total_output_tokens * PRICE_PER_OUTPUT_TOKEN
     )
 
-    # A genuine failure (a tool actually errored) is different from a
-    # correct, by-design decline (clarification / not_engineering) --
-    # counting the latter as an "error" in the sidebar would be
-    # misleading, since the system behaved exactly as intended there.
+   
     is_real_error = (not result.success) and result.workflow not in (
         "clarification", "rejected:not_engineering"
     )
@@ -286,12 +263,6 @@ def _run_query(query_text):
     return result
 
 
-# ----------------------------------------------------------------------
-# Result-rendering helpers -- every one of these reads directly from the
-# real OrchestratorResult / engine output for THIS query. Nothing here
-# is a static decoration; a section simply doesn't render if the
-# underlying data isn't present.
-# ----------------------------------------------------------------------
 
 def _executive_summary_line(result):
     response = result.final_response
@@ -535,12 +506,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ----------------------------------------------------------------------
-# Hero -- one strong sentence up top (item 1), then real dataset stats
-# (item 4, computed from the actual loaded engine -- not hardcoded) and
-# a capability-first "can help you" framing (item 6) that people parse
-# faster than an architecture diagram.
-# ----------------------------------------------------------------------
 st.markdown(
     "### Ask engineering questions in natural language, and TraceGuard AI "
     "finds related artifacts, expands traceability, and explains the "
