@@ -4,3 +4,5 @@ numpy
 sentence-transformers
 minsearch
 openai
+gspread
+google-auth

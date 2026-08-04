@@ -16,7 +16,7 @@ repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from src.feedback_store import append_feedback, load_feedback_df
+from src.feedback_store import append_feedback
 
 st.set_page_config(page_title="Feedback - TraceGuard AI", page_icon="💬", layout="wide")
 
@@ -27,10 +27,8 @@ st.caption(
 )
 
 st.info(
-    "📘 This log is stored on this running app instance only. On Streamlit "
-    "Community Cloud that storage is **ephemeral** -- it resets on redeploy "
-    "or restart -- so use the download button below to export it "
-    "periodically if you want to keep it."
+    "📘 Your feedback is recorded privately -- it is **not shown on this "
+    "page or anywhere else in the app**."
 )
 
 with st.form("feedback_form", clear_on_submit=True):
@@ -62,24 +60,6 @@ with st.form("feedback_form", clear_on_submit=True):
                 message=message.strip(),
             )
             st.success("Thanks -- your feedback was recorded!")
-
-st.markdown("---")
-st.markdown("### 📊 Feedback Log (this server instance)")
-
-feedback_df = load_feedback_df(repo_root)
-if feedback_df.empty:
-    st.caption("No feedback recorded yet.")
-else:
-    st.dataframe(
-        feedback_df.sort_values("timestamp", ascending=False),
-        use_container_width=True, height=320,
-    )
-    st.download_button(
-        "⬇️ Download feedback log (CSV)",
-        data=feedback_df.to_csv(index=False).encode("utf-8"),
-        file_name="traceguard_feedback_log.csv",
-        mime="text/csv",
-    )
 
 st.markdown("---")
 st.markdown(

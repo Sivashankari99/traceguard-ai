@@ -18,6 +18,8 @@ repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from src import engine_status
+
 st.set_page_config(page_title="Dataset Explorer - TraceGuard AI", page_icon="📄", layout="wide")
 
 st.markdown("# 📄 Dataset Explorer")
@@ -33,7 +35,12 @@ st.info(
 
 @st.cache_data
 def load_artifacts():
-    return pd.read_csv(repo_root / "data" / "artifacts.csv")
+    artifacts = pd.read_csv(repo_root / "data" / "artifacts.csv")
+
+    summary = artifacts["Summary"].fillna("").astype(str)
+    text = artifacts["Text"].fillna("").astype(str)
+    artifacts["Description"] = summary.where(summary.str.strip() != "", text)
+    return artifacts
 
 
 df = load_artifacts()
@@ -91,8 +98,8 @@ if search_text.strip():
 
 st.caption(f"Showing {len(filtered)} of {len(df)} artifacts.")
 st.dataframe(
-    filtered[["ID", "Type", "Summary", "State", "Project"]],
-    use_container_width=True,
+    filtered[["ID", "Type", "Description", "State", "Project"]],
+    width="stretch",
     height=380,
 )
 
@@ -103,37 +110,54 @@ st.markdown("---")
 # with a real ID, straight to the main page.
 # ----------------------------------------------------------------------
 st.markdown("### 🔍 Search dataset before querying")
-st.caption(
-    "Pick an artifact below to send a ready-made question to the main "
-    "TraceGuard page -- no need to remember or retype the exact ID."
-)
 
-if filtered.empty:
-    st.warning("No artifacts match your current filters.")
+if not engine_status.is_ready():
+    st.warning(
+        "⏳ The TraceGuard engine hasn't finished loading yet in this session. "
+        "Sending a query now would trigger a fresh 2-5 minute cold start on "
+        "the main page instead of an instant answer."
+    )
+    st.page_link(
+        "app.py",
+        label="🛡️ Open the TraceGuard AI page first, let it finish loading, then come back here",
+    )
 else:
-    options = filtered["ID"].tolist()
-    picked_id = st.selectbox("Choose an artifact ID from the filtered results", options)
-    picked_row = filtered[filtered["ID"] == picked_id].iloc[0]
-    st.write(f"**{picked_id}** ({picked_row['Type']}) — {picked_row['Summary']}")
+    st.caption(
+        "Pick an artifact below to send a ready-made question to the main "
+        "TraceGuard page -- no need to remember or retype the exact ID."
+    )
 
-    b1, b2, b3 = st.columns(3)
+    if filtered.empty:
+        st.warning("No artifacts match your current filters.")
+    else:
+        options = filtered["ID"].tolist()
+        picked_id = st.selectbox("Choose an artifact ID from the filtered results", options)
+        picked_row = filtered[filtered["ID"] == picked_id].iloc[0]
+        st.write(f"**{picked_id}** ({picked_row['Type']}) — {picked_row['Description']}")
 
-    def _send_to_main(query_text):
-        st.session_state["query_input"] = query_text
-        if hasattr(st, "switch_page"):
-            st.switch_page("app.py")
-        else:
-            st.success(
-                "Query ready -- open the main TraceGuard AI page from the "
-                "sidebar to run it."
-            )
+        b1, b2, b3 = st.columns(3)
 
-    if b1.button("💬 Explain this artifact", use_container_width=True):
-        _send_to_main(f"Can you help me understand {picked_id}?")
-    if b2.button("🔗 Trace this artifact", use_container_width=True):
-        _send_to_main(f"Show traceability for {picked_id}")
-    if b3.button("📋 Baseline impact", use_container_width=True):
-        _send_to_main(f"Baseline impact of {picked_id}")
+        def _send_to_main(query_text):
+            st.session_state["query_input"] = query_text
+            # Consumed (popped) once by app.py -- runs this query
+            # immediately on arrival instead of requiring a second,
+            # redundant click on Analyze right after already picking a
+            # specific artifact and action here.
+            st.session_state["auto_analyze"] = True
+            if hasattr(st, "switch_page"):
+                st.switch_page("app.py")
+            else:
+                st.success(
+                    "Query ready -- open the main TraceGuard AI page from the "
+                    "sidebar to run it."
+                )
+
+        if b1.button("💬 Explain this artifact", width="stretch"):
+            _send_to_main(f"Can you help me understand {picked_id}?")
+        if b2.button("🔗 Trace this artifact", width="stretch"):
+            _send_to_main(f"Show traceability for {picked_id}")
+        if b3.button("📋 Baseline impact", width="stretch"):
+            _send_to_main(f"Baseline impact of {picked_id}")
 
 st.markdown("---")
 st.markdown(
