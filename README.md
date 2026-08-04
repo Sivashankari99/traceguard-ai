@@ -10,8 +10,17 @@ The objective is to assist engineers by providing structured, explainable impact
 
 ---
 
+## 🚀 Live Demo
+
+**[traceguard-ai.streamlit.app](https://traceguard-ai.streamlit.app/)**
+
+The app is deployed on Streamlit Community Cloud. First load may take a few minutes while the engine builds its embeddings and indexes (see *Known Limitations* for cost-exposure notes on public deployments).
+
+---
+
 ## 📚 Table of Contents
 
+- [Live Demo](#-live-demo)
 - [Project Goals](#project-goals)
 - [Current Capabilities](#current-capabilities)
 - [Architecture Overview](#architecture-overview)
@@ -23,6 +32,7 @@ The objective is to assist engineers by providing structured, explainable impact
 - [Example Usage](#example-usage)
 - [Dataset](#dataset)
 - [Evaluation](#evaluation)
+- [Monitoring & Feedback](#monitoring--feedback)
 - [Current Status](#current-status)
 - [Known Limitations](#known-limitations)
 - [Planned Development](#planned-development)
@@ -204,11 +214,20 @@ traceguard-ai/
 │   ├── intent_router.py       # Layer 1: lexical rules + semantic fallback
 │   ├── planner.py             # Layer 3: Agent Planner + plan validation
 │   ├── orchestrator.py        # Layer 2: executes a workflow's or plan's steps
+│   ├── feedback_store.py      # Google Sheets-backed feedback/ratings logging
+│   ├── engine_status.py       # Server-wide "has the engine finished loading" flag
 │   ├── config/
 │   │   └── intents.py         # Keyword lists, exemplar phrases, confidence thresholds
 │   └── test_intent_router.py  # 22-case routing regression suite
 │
+├── pages/
+│   ├── 1_About.py             # Architecture, dataset, limitations
+│   ├── 2_Dataset_Explorer.py  # Searchable dataset browser + search-before-query flow
+│   └── 3_Feedback.py          # Suggestion / bug / feature-request form
+│
+├── app.py                     # Main Streamlit entry point
 ├── pyproject.toml
+├── requirements.txt
 ├── uv.lock
 └── README.md
 ```
@@ -248,6 +267,10 @@ Every request — regardless of whether it's a known-ID lookup, a free-text impa
 
 This project uses **entirely synthetic automotive engineering data**, created specifically for educational, experimentation, and portfolio purposes. No proprietary, confidential, employer-specific, customer-specific, or real-world organizational engineering data is used in this project.
 
+- `artifacts.csv` — ~5,000 synthetic engineering artifacts across 9 types (Requirements, Specifications, Test Cases, Test Suites, Inputs, Change Requests, Problem Reports, Tasks, Releases).
+- `baselines.csv` — release/baseline membership records.
+- `evaluation_ground_truth.csv` + `evaluation_new_crs.csv` — 100 paired (proposed-change description → known-affected-artifact-IDs) records, generated for retrieval/impact evaluation. Not yet consumed by an automated evaluation script (see *Known Limitations*).
+
 ---
 
 <a id="evaluation"></a>
@@ -256,7 +279,18 @@ This project uses **entirely synthetic automotive engineering data**, created sp
 
 `04-planner-evaluation-runner.ipynb` runs 20 real queries against the live routing pipeline — a mix of known-workflow controls, deliberately keyword-free phrasings designed to test semantic fallback and the Planner, and deliberately irrelevant queries testing the `not_engineering` decision. Results are compared against a stated hypothesis per query, with a human-reviewed judgment on plan quality rather than a fully automated pass/fail (whether a composed plan is the *right* plan is a judgment call an automated check can't fully make).
 
-Future evaluation work will explore Recall@K, Precision@K, candidate coverage by artifact type, and semantic similarity distributions across a larger query set.
+**Retrieval evaluation (Hit Rate@K, MRR across lexical-only / semantic-only / hybrid RRF) is not yet implemented**, despite a ready-made 100-query ground-truth set already existing in `data/`. This is the most concrete, actionable gap in the project's evaluation story — see *Known Limitations* and *Planned Development*.
+
+---
+
+<a id="monitoring--feedback"></a>
+
+## 📈 Monitoring & Feedback
+
+- **User feedback is collected**: a 👍/👎 rating (with an optional reason and free-text detail for 👎) on every answer on the main page, plus a general suggestion/bug/feature-request form on the Feedback page.
+- Both are written to a private Google Sheet via a service account, split across two tabs (**Ratings** and **Feedback**) rather than one mixed log.
+- Feedback is intentionally **not displayed anywhere in the app** — the Sheet is the sole, private record.
+- **No aggregated dashboard yet.** Per-query metrics (workflow, response time, LLM call count, estimated cost) are shown live for the current answer, and session-scoped summary stats appear in the sidebar, but there is no cross-visitor, historical view (e.g. cost/response-time trends over time, ratings breakdown by workflow). See *Planned Development*.
 
 ---
 
@@ -277,6 +311,11 @@ Future evaluation work will explore Recall@K, Precision@K, candidate coverage by
 ✓ Mechanical plan validation (unknown tools, length, duplicate steps)
 ✓ Grounding validation
 ✓ Planner evaluation notebook (20 real queries, human-reviewed)
+✓ Public deployment on Streamlit Community Cloud
+✓ User feedback collection (ratings + free-form), Google Sheets-backed
+✗ Retrieval evaluation (Hit Rate@K / MRR) -- ground truth exists, not yet run
+✗ Aggregated monitoring dashboard
+✗ Containerization (Dockerfile / docker-compose)
 ```
 
 ---
@@ -288,9 +327,11 @@ Future evaluation work will explore Recall@K, Precision@K, candidate coverage by
 Documented honestly rather than hidden, consistent with this project's design principle below:
 
 - **Semantic fallback rarely fires in practice.** Its confidence threshold was calibrated against real data to 0.90, after finding that genuinely relevant queries only ever scored 0.31–0.37 against workflow exemplars. At 0.90, semantic fallback mostly defers to the Agent Planner rather than actively routing — an intentional tradeoff (the Planner reasons more reliably), but it means this layer is closer to dormant than active today.
-- **The Planner's relevance check is not perfect.** Most irrelevant queries (e.g. greetings) are correctly declined with `not_engineering` at essentially no cost, but some plausible-sounding-but-irrelevant phrasings (e.g. a calendar/meeting question) can still slip through and trigger a full, paid LLM-based impact analysis. This is an accepted, monitored limitation, not a solved problem — treat any public-facing deployment's cost exposure accordingly.
+- **The Planner's relevance check is not perfect.** Most irrelevant queries (e.g. greetings) are correctly declined with `not_engineering` at essentially no cost, but some plausible-sounding-but-irrelevant phrasings (e.g. a calendar/meeting question) can still slip through and trigger a full, paid LLM-based impact analysis. This is an accepted, monitored limitation — the live deployment currently runs on a single shared API key rather than a per-visitor budget, so treat cost exposure accordingly.
 - **Exemplar/workflow boundaries are still somewhat fuzzy** for near-identical traceability-flavored phrasings — two very similarly-worded requests can occasionally land on different (both individually reasonable) workflows.
-- **Retrieval evaluation (Recall@K, Precision@K, etc.) is not yet implemented**, per the *Evaluation* section above.
+- **Retrieval evaluation is not yet implemented.** A 100-query ground-truth set (`evaluation_ground_truth.csv` + `evaluation_new_crs.csv`) already exists specifically for this purpose, but Hit Rate@K/MRR have not yet been computed across lexical-only, semantic-only, and hybrid RRF to confirm hybrid is actually the strongest approach rather than assumed to be.
+- **No containerization.** The app runs directly via `streamlit run app.py` / Streamlit Community Cloud's own dependency install; no Dockerfile or docker-compose setup exists yet for running it in an isolated, portable container.
+- **No aggregated monitoring dashboard.** Feedback and ratings are collected and stored, but there is no visualization of trends over time or across visitors yet — see *Monitoring & Feedback*.
 
 ---
 
@@ -298,9 +339,11 @@ Documented honestly rather than hidden, consistent with this project's design pr
 
 ## 🛣️ Planned Development
 
-- Retrieval evaluation and calibration (Recall@K, Precision@K, candidate coverage)
+- Retrieval evaluation and calibration (Hit Rate@K, MRR, candidate coverage) using the existing ground-truth set
+- A monitoring dashboard (Streamlit-native, reading the existing Google Sheets feedback/ratings data) covering response time, cost, workflow breakdown, and rating trends
+- Containerization (Dockerfile at minimum; docker-compose if a local dependency, e.g. a database, is added later)
 - Tightening the Planner's relevance check against the residual gap noted above
-- Public-facing deployment (Streamlit), with usage/cost monitoring and a rupee-budget-based demo limiter calibrated against real token usage rather than an arbitrary query cap
+- Usage/cost monitoring and a rupee-budget-based demo limiter for the live deployment, calibrated against real token usage rather than an arbitrary query cap
 - Richer artifact information in final impact reports
 - Plan Memory: reusing previously-composed plans for semantically similar goals, with a structural fit-check before reuse (deferred pending further design work, not yet built)
 
